@@ -1,0 +1,35 @@
+# Python bytecode and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+
+# Mutable service configuration and database state
+/config/settings.json*
+/config/gpu_forge.db*
+
+# Tool caches and test output
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Logs and local editor/OS metadata
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local media/test artifacts
+*.gpuforge_tmp*
+*.gpuforge_bak

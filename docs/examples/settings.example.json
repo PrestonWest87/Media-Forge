@@ -1,0 +1,15 @@
+{
+  "operation_mode": "health_check",
+  "backup_policy": "auto_delete",
+  "quality_profile": "visually_lossless",
+  "nvenc_preset": "p4",
+  "media_roots": [
+    "/media/movies",
+    "/media/tv"
+  ],
+  "gpu_index": 0,
+  "external_process_policy": "known",
+  "external_gpu_utilization_threshold": 8,
+  "thermal_pause_c": 89,
+  "thermal_cooldown_sec": 30
+}

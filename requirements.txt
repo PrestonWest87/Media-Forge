@@ -1,0 +1,6 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+aiosqlite>=0.20.0
+nvidia-ml-py>=12.535.133
+pydantic>=2.7.0
+python-multipart>=0.0.9

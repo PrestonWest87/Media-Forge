@@ -1,0 +1,26 @@
+services:
+  gpu-forge:
+    image: ${GPU_FORGE_IMAGE:-gpu-forge:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gpu-forge
+    restart: unless-stopped
+    pid: "host"
+    ports:
+      - "${GPU_FORGE_BIND_IP:-127.0.0.1}:${GPU_FORGE_PORT:-8090}:8090"
+    environment:
+      TZ: ${TZ:-Etc/UTC}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, video, compute, utility]
+    volumes:
+      - ${GPU_FORGE_CONFIG_PATH:-./config}:/config
+      - ${MEDIA_MOVIES_PATH:?Set MEDIA_MOVIES_PATH in .env}:/media/movies
+      - ${MEDIA_TV_PATH:?Set MEDIA_TV_PATH in .env}:/media/tv

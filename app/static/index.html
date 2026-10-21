@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090d14">
+  <title>GPU-Forge · Media Operations</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: { colors: { forge: { 950: '#090d14', 900: '#0e1520', 850: '#111b28', 800: '#172333', 700: '#26374a', 500: '#36d6a2', 400: '#58e7bb' } } } }
+    };
+  </script>
+  <style>
+    :root { color-scheme: dark; }
+    body { background: radial-gradient(ellipse at 50% -18%, rgba(36, 120, 112, .16), transparent 45%), #090d14; }
+    .glass { background: rgba(17, 27, 40, .84); border: 1px solid rgba(122, 153, 178, .13); box-shadow: 0 12px 32px rgba(0, 0, 0, .16); }
+    .metric-track { background: rgba(148, 163, 184, .12); }
+    .metric-fill { transition: width .45s ease; }
+    .tab-active { color: #58e7bb; border-color: #36d6a2; background: rgba(54, 214, 162, .08); }
+    .scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+    .scrollbar::-webkit-scrollbar-thumb { background: #26374a; border-radius: 8px; }
+    select { background-color: #0b121b; }
+    .toast { animation: toast-in .2s ease-out; }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body class="min-h-screen text-slate-200 antialiased">
+  <div class="mx-auto max-w-[1600px] px-4 pb-10 sm:px-6 lg:px-8">
+    <header class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 py-5">
+      <div class="flex items-center gap-3">
+        <div class="grid h-11 w-11 place-items-center rounded-xl bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-300/20">
+          <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 2.7 21 8v8l-9 5.3L3 16V8l9-5.3Z"/><path d="m8.2 9.8 3.8-2.2 3.8 2.2v4.4L12 16.4l-3.8-2.2V9.8Z"/><path d="m12 7.6 0 8.8M8.2 9.8l7.6 4.4M15.8 9.8l-7.6 4.4"/></svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-semibold tracking-[.16em] text-white">GPU-FORGE</h1>
+            <span class="rounded border border-slate-700 px-1.5 py-0.5 text-[9px] font-semibold tracking-widest text-slate-400">MEDIA OPS</span>
+          </div>
+          <p class="mt-0.5 text-xs text-slate-500">NVDEC verification <span class="px-1 text-slate-700">/</span> NVENC H.265 pipeline</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <span id="gpuState" class="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold tracking-wide text-slate-300">
+          <span class="h-1.5 w-1.5 rounded-full bg-slate-500"></span><span>IDLE</span>
+        </span>
+        <span id="updatedAt" class="hidden text-xs text-slate-500 sm:inline">Connecting…</span>
+        <button id="queueButton" class="rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-3.5 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-400/10">Start Full Queue</button>
+        <button id="scanButton" class="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-3.5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-wait disabled:opacity-60">
+          <svg viewBox="0 0 20 20" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16.2 7.8A6.5 6.5 0 1 0 16.5 11M16.2 3.8v4h-4"/></svg>
+          Scan Library
+        </button>
+      </div>
+    </header>
+
+    <main class="space-y-6 pt-6">
+      <section aria-label="GPU telemetry" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <article class="glass rounded-xl p-4">
+          <div class="flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-slate-500">GPU Core</span><span class="text-[10px] text-slate-600">UTIL</span></div>
+          <div class="mt-3 flex items-end justify-between"><strong id="coreValue" class="text-2xl font-semibold tabular-nums text-white">—<small class="ml-1 text-sm font-medium text-slate-500">%</small></strong><span class="text-xs text-slate-500">Compute</span></div>
+          <div class="metric-track mt-3 h-1.5 overflow-hidden rounded-full"><div id="coreBar" class="metric-fill h-full rounded-full bg-sky-400" style="width:0%"></div></div>
+        </article>
+        <article class="glass rounded-xl p-4">
+          <div class="flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-slate-500">NVDEC</span><span class="text-[10px] text-slate-600">DECODE</span></div>
+          <div class="mt-3 flex items-end justify-between"><strong id="decoderValue" class="text-2xl font-semibold tabular-nums text-white">—<small class="ml-1 text-sm font-medium text-slate-500">%</small></strong><span class="text-xs text-slate-500">Hardware</span></div>
+          <div class="metric-track mt-3 h-1.5 overflow-hidden rounded-full"><div id="decoderBar" class="metric-fill h-full rounded-full bg-emerald-400" style="width:0%"></div></div>
+        </article>
+        <article class="glass rounded-xl p-4">
+          <div class="flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-slate-500">NVENC</span><span class="text-[10px] text-slate-600">ENCODE</span></div>
+          <div class="mt-3 flex items-end justify-between"><strong id="encoderValue" class="text-2xl font-semibold tabular-nums text-white">—<small class="ml-1 text-sm font-medium text-slate-500">%</small></strong><span class="text-xs text-slate-500">Hardware</span></div>
+          <div class="metric-track mt-3 h-1.5 overflow-hidden rounded-full"><div id="encoderBar" class="metric-fill h-full rounded-full bg-violet-400" style="width:0%"></div></div>
+        </article>
+        <article class="glass rounded-xl p-4">
+          <div class="flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-slate-500">VRAM</span><span class="text-[10px] text-slate-600">MEMORY</span></div>
+          <div class="mt-3 flex items-end justify-between"><strong id="vramValue" class="text-2xl font-semibold tabular-nums text-white">—</strong><span id="vramTotal" class="text-xs text-slate-500">MB</span></div>
+          <div class="metric-track mt-3 h-1.5 overflow-hidden rounded-full"><div id="vramBar" class="metric-fill h-full rounded-full bg-amber-400" style="width:0%"></div></div>
+        </article>
+        <article class="glass rounded-xl p-4">
+          <div class="flex items-center justify-between"><span class="text-xs font-medium uppercase tracking-wider text-slate-500">GPU Temp</span><span class="text-[10px] text-slate-600">THERMAL</span></div>
+          <div class="mt-3 flex items-end justify-between"><strong id="tempValue" class="text-2xl font-semibold tabular-nums text-white">—<small class="ml-1 text-sm font-medium text-slate-500">°C</small></strong><span id="tempHint" class="text-right text-[10px] text-slate-500">Thermal limit —</span></div>
+          <div class="mt-3 flex h-1.5 items-center"><div class="h-px w-full bg-slate-800"></div></div>
+        </article>
+      </section>
+
+      <section class="grid gap-3 lg:grid-cols-[1.6fr_1fr]">
+        <article class="glass rounded-xl p-4 sm:p-5">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div><p class="text-xs font-medium uppercase tracking-wider text-slate-500">Queue Progress</p><p id="currentFile" class="mt-1 max-w-2xl truncate text-sm text-slate-300">Waiting for library scan</p></div>
+            <div class="text-right"><strong id="progressValue" class="text-xl font-semibold tabular-nums text-white">0%</strong><p id="progressCaption" class="text-xs text-slate-500">0 / 0 checked</p></div>
+          </div>
+          <div class="metric-track mt-4 h-2 overflow-hidden rounded-full"><div id="progressBar" class="metric-fill h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400" style="width:0%"></div></div>
+          <div id="fileProgressSection" class="mt-4 hidden">
+            <div class="mb-2 flex items-center justify-between gap-3 text-[11px]"><span id="fileProgressLabel" class="text-slate-400">Current file</span><strong id="fileProgressValue" class="tabular-nums text-cyan-200">0%</strong></div>
+            <div class="metric-track h-1.5 overflow-hidden rounded-full"><div id="fileProgressBar" class="metric-fill h-full rounded-full bg-cyan-400" style="width:0%"></div></div>
+          </div>
+          <div class="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-500">
+            <span>Current FPS <strong id="fpsValue" class="ml-1 font-semibold text-slate-200">0</strong></span>
+            <span>Queued <strong id="queuedValue" class="ml-1 font-semibold text-slate-200">0</strong></span>
+            <span>GPU <strong id="gpuIndex" class="ml-1 font-semibold text-slate-200">—</strong></span>
+            <span id="gpuError" class="hidden text-rose-300"></span>
+          </div>
+        </article>
+        <div class="grid grid-cols-2 gap-3">
+          <article class="glass rounded-xl p-4"><p class="text-xs font-medium uppercase tracking-wider text-slate-500">Files Checked</p><p id="checkedValue" class="mt-2 text-2xl font-semibold tabular-nums text-white">0</p><p id="totalValue" class="mt-1 text-xs text-slate-500">0 in library</p></article>
+          <article class="glass rounded-xl p-4"><p class="text-xs font-medium uppercase tracking-wider text-slate-500">Space Saved</p><p id="savedValue" class="mt-2 text-2xl font-semibold tabular-nums text-emerald-300">0 GB</p><p class="mt-1 text-xs text-slate-500">Verified H.265 replacements</p></article>
+          <article class="glass col-span-2 rounded-xl p-4"><div class="flex items-center justify-between gap-2"><div><p class="text-xs font-medium uppercase tracking-wider text-slate-500">Held Backups</p><p id="backupValue" class="mt-1 text-xl font-semibold tabular-nums text-white">0 GB</p></div><span class="rounded-md border border-amber-400/20 bg-amber-400/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-200">Paranoid Hold</span></div></article>
+        </div>
+      </section>
+
+      <section class="glass rounded-xl p-4 sm:p-5">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div><h2 class="text-sm font-semibold text-white">Pipeline Configuration</h2><p class="mt-1 text-xs text-slate-500">Changes are saved to the persistent /config settings file.</p></div>
+          <span id="settingsMessage" class="min-h-5 text-xs text-slate-500"></span>
+        </div>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+          <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">Operation Mode</span><select id="operationMode" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="health_check">Health Check Only</option><option value="transcode">Check + Smart H.265 Transcode</option></select></label>
+          <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">Backup Safety Policy</span><select id="backupPolicy" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="auto_delete">Auto-delete after NVDEC verification</option><option value="keep">Keep .gpuforge_bak until purged</option></select></label>
+          <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">Quality Profile</span><select id="qualityProfile" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="visually_lossless">Visually Lossless · CQ 19/20</option><option value="balanced">Balanced Space Saver · CQ 22/23</option></select></label>
+          <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">NVENC Preset</span><select id="nvencPreset" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="p4">p4 · Fast High-Efficiency</option><option value="p6">p6 · Max Compression</option></select></label>
+          <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">External GPU Yield</span><select id="externalPolicy" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="known">FFmpeg / Jellyfin</option><option value="any">Any external GPU process</option></select></label>
+          <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">Yield Threshold</span><select id="externalGpuThreshold" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="5">Over 5% GPU activity</option><option value="8">Over 8% · Default</option><option value="10">Over 10% GPU activity</option><option value="15">Over 15% GPU activity</option><option value="20">Over 20% GPU activity</option></select></label>
+          <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">Thermal Pause</span><select id="thermalPause" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="82">82 °C</option><option value="85">85 °C</option><option value="87">87 °C</option><option value="89">89 °C · Default</option></select></label>
+          <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">Thermal Cool-down</span><select id="thermalCooldown" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="15">15 seconds</option><option value="30">30 seconds · Default</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select></label>
+        </div>
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
+          <p class="max-w-3xl text-xs leading-relaxed text-slate-500">External yield uses the busiest GPU engine above its threshold. Thermal protection pauses below NVML’s slowdown limit, then resumes after cooling and a dwell period. Media decodes remain pinned to CUDA surfaces.</p>
+          <button id="purgeButton" class="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3.5 py-2 text-xs font-semibold text-amber-200 transition hover:bg-amber-400/10">Purge Verified Backups</button>
+        </div>
+      </section>
+
+      <section class="glass overflow-hidden rounded-xl">
+        <div class="border-b border-slate-800 p-4 sm:p-5">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div><h2 class="text-sm font-semibold text-white">Media Results</h2><p class="mt-1 text-xs text-slate-500">Select one file for NVDEC-only testing or a full source-check → H.265 transcode → output-check test with a retained backup. HEVC/AV1 inputs only need the health check.</p></div>
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="relative"><svg viewBox="0 0 20 20" class="absolute left-3 top-2.5 h-4 w-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8.8" cy="8.8" r="5.6"/><path d="m13 13 4 4"/></svg><input id="searchInput" type="search" placeholder="Find a file…" class="w-52 rounded-lg border border-slate-700 bg-slate-950/70 py-2 pl-9 pr-3 text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:border-emerald-400"></div>
+              <button id="fullTestButton" disabled class="rounded-lg border border-violet-400/30 bg-violet-400/5 px-3 py-2 text-xs font-semibold text-violet-200 transition hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-40">Full Pipeline Test</button>
+              <button id="testButton" disabled class="rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-40">NVDEC-only Test</button>
+              <button id="restoreButton" disabled class="rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-400/10 disabled:cursor-not-allowed disabled:opacity-40">Restore Selected Backup</button>
+            </div>
+          </div>
+          <div id="filterTabs" class="scrollbar mt-4 flex gap-1 overflow-x-auto border-b border-slate-800">
+            <button data-filter="active" class="filter-tab tab-active shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium">Active / Pending</button>
+            <button data-filter="corrupt" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Corrupt</button>
+            <button data-filter="transcoded" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Transcoded &amp; Verified</button>
+            <button data-filter="skipped" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Skipped / Already Optimal</button>
+            <button data-filter="unsupported" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Unsupported Hardware</button>
+            <button data-filter="failed" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Transcode Failed</button>
+          </div>
+        </div>
+        <div class="scrollbar overflow-x-auto">
+          <table class="w-full min-w-[980px] border-collapse text-left">
+            <thead class="bg-slate-950/45 text-[10px] uppercase tracking-wider text-slate-500"><tr><th class="w-10 px-4 py-3" title="Select a file to test or restore">Select</th><th class="px-3 py-3 font-medium">Media File</th><th class="px-3 py-3 font-medium">Status</th><th class="px-3 py-3 font-medium">Codec</th><th class="px-3 py-3 font-medium">Resolution</th><th class="px-3 py-3 font-medium">Size</th><th class="px-3 py-3 font-medium">Duration</th><th class="px-3 py-3 font-medium">Updated</th><th class="px-4 py-3 text-right font-medium">Action</th></tr></thead>
+            <tbody id="resultsBody" class="divide-y divide-slate-800/70"><tr><td colspan="9" class="px-4 py-12 text-center text-sm text-slate-500">Loading media results…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 px-4 py-3 text-xs text-slate-500"><span id="resultCount">0 files</span><span>Originals are preserved until replacement verification completes.</span></div>
+      </section>
+    </main>
+  </div>
+  <div id="toastArea" class="pointer-events-none fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+  <script>
+    const state = { filter: 'active', search: '', settings: null, selectedId: null, selectedHasBackup: false, queueEnabled: false, expandedErrorIds: new Set(), lastFilesSignature: null, refreshTimer: null };
+    const $ = (id) => document.getElementById(id);
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
+    const formatBytes = (bytes) => {
+      const value = Number(bytes || 0);
+      if (value < 1024) return `${value} B`;
+      const units = ['KB', 'MB', 'GB', 'TB'];
+      let size = value / 1024, unit = 0;
+      while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit++; }
+      return `${size.toFixed(size >= 100 ? 0 : 1)} ${units[unit]}`;
+    };
+    const formatDuration = (seconds) => {
+      if (seconds == null || !Number.isFinite(Number(seconds))) return '—';
+      const value = Math.max(0, Math.floor(Number(seconds)));
+      const hours = Math.floor(value / 3600), minutes = Math.floor((value % 3600) / 60), secs = value % 60;
+      return hours ? `${hours}h ${String(minutes).padStart(2, '0')}m` : `${minutes}m ${String(secs).padStart(2, '0')}s`;
+    };
+    const toast = (message, kind = 'success') => {
+      const node = document.createElement('div');
+      const tone = kind === 'error' ? 'border-rose-400/30 bg-rose-950 text-rose-100' : 'border-emerald-400/30 bg-slate-900 text-slate-100';
+      node.className = `toast pointer-events-auto max-w-sm rounded-lg border px-4 py-3 text-sm shadow-xl ${tone}`;
+      node.textContent = message;
+      $('toastArea').appendChild(node);
+      setTimeout(() => node.remove(), 4200);
+    };
+    async function api(url, options = {}) {
+      const response = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
+      let body = {};
+      try { body = await response.json(); } catch (_) {}
+      if (!response.ok) throw new Error(body.detail || `Request failed (${response.status})`);
+      return body;
+    }
+    function setGpuState(value) {
+      const element = $('gpuState');
+      const label = value === 'PAUSED_THERMAL' ? 'PAUSED · THERMAL COOLING' : value === 'PAUSED_YIELD' ? 'PAUSED · YIELDING TO JELLYFIN / GPU APP' : value === 'VERIFYING_OUTPUT' ? 'VERIFYING NEW FILE' : value === 'ACTIVE' ? 'ACTIVE' : value === 'UNAVAILABLE' ? 'GPU UNAVAILABLE' : 'IDLE';
+      const classes = value === 'PAUSED_THERMAL' ? ['border-rose-400/30','bg-rose-400/5','text-rose-200','bg-rose-300'] : value === 'PAUSED_YIELD' ? ['border-amber-400/30','bg-amber-400/5','text-amber-200','bg-amber-300'] : value === 'ACTIVE' || value === 'VERIFYING_OUTPUT' ? ['border-emerald-400/30','bg-emerald-400/5','text-emerald-200','bg-emerald-300'] : value === 'UNAVAILABLE' ? ['border-rose-400/30','bg-rose-400/5','text-rose-200','bg-rose-300'] : ['border-slate-700','bg-slate-900/80','text-slate-300','bg-slate-500'];
+      element.className = `inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold tracking-wide ${classes.slice(0,3).join(' ')}`;
+      element.innerHTML = `<span class="h-1.5 w-1.5 rounded-full ${classes[3]}"></span><span>${label}</span>`;
+    }
+    function setMetric(valueId, barId, value, suffix = '%') {
+      const safe = Math.max(0, Math.min(100, Number(value || 0)));
+      $(valueId).innerHTML = `${Math.round(safe)}<small class="ml-1 text-sm font-medium text-slate-500">${suffix}</small>`;
+      $(barId).style.width = `${safe}%`;
+    }
+    function updateTelemetry(data) {
+      const gpu = data.gpu || {};
+      const worker = data.worker || {};
+      setGpuState(worker.current_file_id ? worker.state : (data.state || gpu.gpu_state));
+      setMetric('coreValue', 'coreBar', gpu.core_utilization);
+      setMetric('decoderValue', 'decoderBar', gpu.decoder_utilization);
+      setMetric('encoderValue', 'encoderBar', gpu.encoder_utilization);
+      const used = Number(gpu.vram_used_mb || 0), total = Number(gpu.vram_total_mb || 0);
+      $('vramValue').textContent = used.toLocaleString();
+      $('vramTotal').textContent = `${total.toLocaleString()} MB`;
+      $('vramBar').style.width = `${total ? Math.min(100, used * 100 / total) : 0}%`;
+      $('tempValue').innerHTML = `${gpu.temperature_c == null ? '—' : escapeHtml(gpu.temperature_c)}<small class="ml-1 text-sm font-medium text-slate-500">°C</small>`;
+      $('tempHint').textContent = gpu.thermal_pause_threshold_c == null ? 'Thermal limit —' : `Pause ${gpu.thermal_pause_threshold_c}° · resume ${gpu.thermal_resume_threshold_c}°`;
+      $('gpuIndex').textContent = gpu.available ? `#${gpu.gpu_index}` : 'Unavailable';
+      $('gpuError').textContent = gpu.error || '';
+      $('gpuError').classList.toggle('hidden', !gpu.error);
+      const percent = Number(data.progress_percent || 0);
+      $('progressValue').textContent = `${percent.toFixed(1)}%`;
+      $('progressBar').style.width = `${percent}%`;
+      const checkedLabel = `${Number(data.files_checked || 0).toLocaleString()} / ${Number(data.total_files || 0).toLocaleString()} checked`;
+      $('progressCaption').textContent = worker.current_file_id ? `${checkedLabel} · current file below` : checkedLabel;
+      const fileProgress = Math.max(0, Math.min(100, Number(worker.current_progress_percent || 0)));
+      $('fileProgressSection').classList.toggle('hidden', !worker.current_file_id);
+      $('fileProgressValue').textContent = `${fileProgress.toFixed(1)}%`;
+      $('fileProgressBar').style.width = `${fileProgress}%`;
+      const phaseLabels = { CHECKING: 'NVDEC source health check', TRANSCODING: 'NVENC H.265 transcode', VERIFYING_OUTPUT: 'NVDEC output verification' };
+      const currentPhase = phaseLabels[worker.current_phase] || 'Media processing';
+      $('fileProgressLabel').textContent = worker.state === 'PAUSED_YIELD' ? `${currentPhase} · yielding to external GPU work` : currentPhase;
+      $('checkedValue').textContent = Number(data.files_checked || 0).toLocaleString();
+      $('totalValue').textContent = `${Number(data.total_files || 0).toLocaleString()} in library`;
+      $('savedValue').textContent = `${Number(data.saved_gb || 0).toFixed(3)} GB`;
+      $('backupValue').textContent = `${Number(data.held_backup_gb || 0).toFixed(3)} GB`;
+      $('fpsValue').textContent = Number(worker.current_fps || 0).toFixed(1);
+      $('queuedValue').textContent = Number(worker.queued || 0).toLocaleString();
+      $('currentFile').textContent = worker.current_path ? worker.current_path : (!worker.queue_enabled ? 'Queue paused · select a file for an NVDEC test or start the full queue' : gpu.available ? 'Waiting for work' : 'GPU/NVML device is required for media processing');
+      $('currentFile').title = worker.current_path || '';
+      state.queueEnabled = Boolean(worker.queue_enabled);
+      $('queueButton').textContent = state.queueEnabled ? 'Pause Queue' : 'Start Full Queue';
+      $('queueButton').className = state.queueEnabled
+        ? 'rounded-lg border border-amber-400/30 bg-amber-400/5 px-3.5 py-2 text-sm font-semibold text-amber-200 transition hover:bg-amber-400/10'
+        : 'rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-3.5 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-400/10';
+      $('updatedAt').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    }
+    function statusPresentation(status) {
+      const map = {
+        PENDING: ['Pending', 'border-slate-700 bg-slate-800/60 text-slate-300'],
+        CHECKING: ['Checking', 'border-sky-400/25 bg-sky-400/5 text-sky-200'],
+        TRANSCODING: ['Transcoding', 'border-violet-400/25 bg-violet-400/5 text-violet-200'],
+        VERIFYING_OUTPUT: ['Verifying Output', 'border-cyan-400/25 bg-cyan-400/5 text-cyan-200'],
+        PAUSED_YIELD: ['Yield Paused', 'border-amber-400/25 bg-amber-400/5 text-amber-200'],
+        HEALTHY: ['Healthy', 'border-emerald-400/25 bg-emerald-400/5 text-emerald-200'],
+        TRANSCODED: ['Transcoded ✓', 'border-emerald-400/25 bg-emerald-400/5 text-emerald-200'],
+        TRANSCODED_BACKUP_KEPT: ['Verified · Backup Held', 'border-amber-400/25 bg-amber-400/5 text-amber-200'],
+        SKIPPED_OPTIMAL: ['Skipped · Optimal', 'border-slate-600 bg-slate-800/60 text-slate-300'],
+        SKIPPED_HW_UNSUPPORTED: ['HW Unsupported', 'border-orange-400/25 bg-orange-400/5 text-orange-200'],
+        CORRUPT: ['Corrupt', 'border-rose-400/25 bg-rose-400/5 text-rose-200'],
+        TRANSCODE_FAILED_RESTORED: ['Failed · Original Restored', 'border-rose-400/25 bg-rose-400/5 text-rose-200']
+      };
+      return map[status] || [status || 'Unknown', 'border-slate-700 bg-slate-800/60 text-slate-300'];
+    }
+    function renderRows(files) {
+      const body = $('resultsBody');
+      const signature = JSON.stringify(files);
+      if (signature === state.lastFilesSignature) return;
+      body.querySelectorAll('details[data-error-id]').forEach((details) => {
+        const fileId = Number(details.dataset.errorId);
+        if (details.open) state.expandedErrorIds.add(fileId);
+        else state.expandedErrorIds.delete(fileId);
+      });
+      state.lastFilesSignature = signature;
+      $('resultCount').textContent = `${files.length} file${files.length === 1 ? '' : 's'}`;
+      if (!files.length) {
+        body.innerHTML = '<tr><td colspan="9" class="px-4 py-14 text-center"><div class="text-sm font-medium text-slate-300">No files in this view</div><div class="mt-1 text-xs text-slate-500">Scan a library or choose another result filter.</div></td></tr>';
+        state.selectedId = null;
+        state.selectedHasBackup = false;
+        updateSelectionButtons();
+        return;
+      }
+      body.innerHTML = files.map((file) => {
+        const [statusLabel, statusClass] = statusPresentation(file.status);
+        const name = escapeHtml(file.file_name || file.file_path);
+        const path = escapeHtml(file.file_path);
+        const codec = escapeHtml(file.codec || '—');
+        const resolution = file.width && file.height ? `${Number(file.width)}×${Number(file.height)}` : '—';
+        const actualSize = file.actual_size_bytes ?? file.size_bytes;
+        const sizeText = file.new_size_bytes ? `${formatBytes(actualSize)} <span class="text-slate-600">/ ${formatBytes(file.size_bytes)} in</span>` : formatBytes(actualSize);
+        const updated = file.updated_at ? new Date(file.updated_at.replace(' ', 'T') + 'Z').toLocaleString() : '—';
+        const canRestore = file.has_backup && file.status === 'TRANSCODED_BACKUP_KEPT';
+        const canRetry = ['CORRUPT', 'SKIPPED_HW_UNSUPPORTED', 'TRANSCODE_FAILED_RESTORED'].includes(file.status) && !file.has_backup;
+        const error = file.error_log ? `<details data-error-id="${Number(file.id)}" class="mt-2 max-w-xl" ${state.expandedErrorIds.has(Number(file.id)) ? 'open' : ''}><summary class="cursor-pointer text-[11px] text-rose-300/80 hover:text-rose-200">Show exact FFmpeg / processing details</summary><pre class="scrollbar mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-rose-400/10 bg-slate-950/70 p-3 font-mono text-[10px] leading-relaxed text-rose-100/80">${escapeHtml(file.error_log)}</pre></details>` : '';
+        return `<tr class="group align-top hover:bg-white/[.018]">
+          <td class="px-4 py-3"><input type="radio" name="fileSelection" value="${Number(file.id)}" data-has-backup="${canRestore}" aria-label="Select ${name}" class="accent-emerald-400" ${state.selectedId === Number(file.id) ? 'checked' : ''}></td>
+          <td class="max-w-[370px] px-3 py-3"><div class="truncate text-xs font-medium text-slate-200" title="${path}">${name}</div><div class="mt-1 truncate text-[10px] text-slate-600" title="${path}">${path}</div>${error}</td>
+          <td class="px-3 py-3"><span class="inline-flex whitespace-nowrap rounded-md border px-2 py-1 text-[10px] font-medium ${statusClass}">${statusLabel}</span></td>
+          <td class="px-3 py-3 text-xs text-slate-400">${codec}</td>
+          <td class="px-3 py-3 text-xs tabular-nums text-slate-400">${resolution}</td>
+          <td class="whitespace-nowrap px-3 py-3 text-xs tabular-nums text-slate-300">${sizeText}</td>
+          <td class="whitespace-nowrap px-3 py-3 text-xs tabular-nums text-slate-400">${formatDuration(file.duration)}</td>
+          <td class="whitespace-nowrap px-3 py-3 text-[10px] text-slate-500">${escapeHtml(updated)}</td>
+          <td class="whitespace-nowrap px-4 py-3 text-right">${canRetry ? `<button data-retry="${Number(file.id)}" class="rounded-md border border-slate-700 px-2.5 py-1.5 text-[10px] font-medium text-slate-300 hover:border-emerald-400/40 hover:text-emerald-200">Retry</button>` : canRestore ? '<span class="text-[10px] text-amber-200/70">Backup held</span>' : '—'}</td>
+        </tr>`;
+      }).join('');
+      body.querySelectorAll('input[name="fileSelection"]').forEach((input) => input.addEventListener('change', () => {
+        state.selectedId = Number(input.value);
+        state.selectedHasBackup = input.dataset.hasBackup === 'true';
+        updateSelectionButtons();
+      }));
+      body.querySelectorAll('details[data-error-id]').forEach((details) => details.addEventListener('toggle', () => {
+        const fileId = Number(details.dataset.errorId);
+        if (details.open) state.expandedErrorIds.add(fileId);
+        else state.expandedErrorIds.delete(fileId);
+      }));
+      body.querySelectorAll('[data-retry]').forEach((button) => button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          const result = await api(`/api/files/${button.dataset.retry}/retry`, { method: 'POST' });
+          toast(result.queue_enabled ? 'File added back to the processing queue.' : 'File marked Pending; the full queue is paused.');
+          await refreshAll();
+        }
+        catch (error) { toast(error.message, 'error'); button.disabled = false; }
+      }));
+      const selected = files.find((file) => Number(file.id) === state.selectedId);
+      if (!selected) {
+        state.selectedId = null;
+        state.selectedHasBackup = false;
+      } else {
+        state.selectedHasBackup = Boolean(selected.has_backup && selected.status === 'TRANSCODED_BACKUP_KEPT');
+      }
+      updateSelectionButtons();
+    }
+    function updateSelectionButtons() {
+      $('testButton').disabled = !state.selectedId || state.selectedHasBackup;
+      $('fullTestButton').disabled = !state.selectedId || state.selectedHasBackup;
+      $('restoreButton').disabled = !state.selectedId || !state.selectedHasBackup;
+    }
+    async function loadSettings() {
+      const settings = await api('/api/settings');
+      state.settings = settings;
+      $('operationMode').value = settings.operation_mode;
+      $('backupPolicy').value = settings.backup_policy;
+      $('qualityProfile').value = settings.quality_profile;
+      $('nvencPreset').value = settings.nvenc_preset;
+      $('externalPolicy').value = settings.external_process_policy;
+      $('externalGpuThreshold').value = String(settings.external_gpu_utilization_threshold);
+      $('thermalPause').value = String(settings.thermal_pause_c);
+      $('thermalCooldown').value = String(settings.thermal_cooldown_sec);
+    }
+    async function saveSettings() {
+      if (!state.settings) return;
+      const next = {
+        ...state.settings,
+        operation_mode: $('operationMode').value,
+        backup_policy: $('backupPolicy').value,
+        quality_profile: $('qualityProfile').value,
+        nvenc_preset: $('nvencPreset').value,
+        external_process_policy: $('externalPolicy').value,
+        external_gpu_utilization_threshold: Number($('externalGpuThreshold').value),
+        thermal_pause_c: Number($('thermalPause').value),
+        thermal_cooldown_sec: Number($('thermalCooldown').value)
+      };
+      $('settingsMessage').textContent = 'Saving…';
+      try {
+        state.settings = await api('/api/settings', { method: 'PUT', body: JSON.stringify(next) });
+        $('settingsMessage').textContent = 'Saved';
+        setTimeout(() => { $('settingsMessage').textContent = ''; }, 1800);
+      } catch (error) {
+        $('settingsMessage').textContent = '';
+        toast(`Could not save settings: ${error.message}`, 'error');
+      }
+    }
+    async function loadFiles() {
+      const query = new URLSearchParams({ filter: state.filter, q: state.search, limit: '250' });
+      const result = await api(`/api/files?${query.toString()}`);
+      renderRows(result.files || []);
+    }
+    async function refreshAll() {
+      try {
+        const [telemetry] = await Promise.all([api('/api/telemetry'), loadFiles()]);
+        updateTelemetry(telemetry);
+      } catch (error) {
+        $('updatedAt').textContent = 'API unavailable';
+        console.error(error);
+      }
+    }
+
+    $('filterTabs').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-filter]');
+      if (!button) return;
+      state.filter = button.dataset.filter;
+      state.selectedId = null;
+      state.selectedHasBackup = false;
+      document.querySelectorAll('.filter-tab').forEach((tab) => {
+        tab.classList.toggle('tab-active', tab === button);
+        tab.classList.toggle('text-slate-500', tab !== button);
+      });
+      loadFiles().catch((error) => toast(error.message, 'error'));
+    });
+    let searchTimeout;
+    $('searchInput').addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => { state.search = $('searchInput').value.trim(); loadFiles().catch(console.error); }, 220);
+    });
+    $('scanButton').addEventListener('click', async () => {
+      const button = $('scanButton');
+      button.disabled = true;
+      try {
+        const result = await api('/api/scan', { method: 'POST' });
+        toast(`Scanned ${result.scanned} media files; ${result.enqueued} queued${result.queue_enabled ? '.' : '. Queue paused—select a file to test it.'}`);
+        await refreshAll();
+      } catch (error) { toast(`Scan failed: ${error.message}`, 'error'); }
+      finally { button.disabled = false; }
+    });
+    $('queueButton').addEventListener('click', async () => {
+      const button = $('queueButton');
+      button.disabled = true;
+      try {
+        if (state.queueEnabled) {
+          await api('/api/queue/pause', { method: 'POST' });
+          toast('Queue paused after the current file.');
+        } else {
+          const result = await api('/api/queue/start', { method: 'POST' });
+          toast(`Full queue started; ${result.enqueued} pending file(s) queued.`);
+        }
+        await refreshAll();
+      } catch (error) { toast(`Queue control failed: ${error.message}`, 'error'); }
+      finally { button.disabled = false; }
+    });
+    $('testButton').addEventListener('click', async () => {
+      if (!state.selectedId) return;
+      const button = $('testButton');
+      button.disabled = true;
+      try {
+        await api(`/api/files/${state.selectedId}/test`, { method: 'POST' });
+        state.selectedId = null;
+        state.selectedHasBackup = false;
+        toast('Selected file queued for a hardware-only NVDEC test; no transcode will run.');
+        await refreshAll();
+      } catch (error) { toast(`File test could not be queued: ${error.message}`, 'error'); }
+      finally { updateSelectionButtons(); }
+    });
+    $('fullTestButton').addEventListener('click', async () => {
+      if (!state.selectedId) return;
+      const button = $('fullTestButton');
+      button.disabled = true;
+      try {
+        await api(`/api/files/${state.selectedId}/full-test`, { method: 'POST' });
+        state.selectedId = null;
+        state.selectedHasBackup = false;
+        toast('Full test queued: source NVDEC check, H.265 transcode, output NVDEC verification, and retained backup.');
+        await refreshAll();
+      } catch (error) { toast(`Full test could not be queued: ${error.message}`, 'error'); }
+      finally { updateSelectionButtons(); }
+    });
+    $('purgeButton').addEventListener('click', async () => {
+      if (!confirm('Permanently purge all retained, verified .gpuforge_bak files?')) return;
+      try {
+        const result = await api('/api/backups/purge', { method: 'POST' });
+        toast(`${result.purged.length} verified backup(s) purged${result.failures.length ? `; ${result.failures.length} could not be removed` : ''}.`, result.failures.length ? 'error' : 'success');
+        await refreshAll();
+      } catch (error) { toast(error.message, 'error'); }
+    });
+    $('restoreButton').addEventListener('click', async () => {
+      if (!state.selectedId || !confirm('Restore the selected original from its retained backup? The current transcoded file will be replaced.')) return;
+      try {
+        await api(`/api/files/${state.selectedId}/restore`, { method: 'POST' });
+        state.selectedId = null;
+        state.selectedHasBackup = false;
+        toast('Original restored from the retained backup.');
+        await refreshAll();
+      } catch (error) { toast(`Restore failed: ${error.message}`, 'error'); }
+    });
+    ['operationMode', 'backupPolicy', 'qualityProfile', 'nvencPreset', 'externalPolicy', 'externalGpuThreshold', 'thermalPause', 'thermalCooldown'].forEach((id) => $(id).addEventListener('change', saveSettings));
+
+    (async () => {
+      try { await loadSettings(); }
+      catch (error) { toast(`Could not load settings: ${error.message}`, 'error'); }
+      await refreshAll();
+      state.refreshTimer = setInterval(refreshAll, 2500);
+    })();
+  </script>
+</body>
+</html>
