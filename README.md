@@ -13,7 +13,7 @@ It is designed for Linux hosts with Docker Compose, a compatible NVIDIA driver, 
 - **Purpose:** GPU-accelerated media health checks and optional smart H.265 transcodes.
 - **Runtime:** Python 3.12, FastAPI, SQLite, FFmpeg 8.1.2, NVIDIA NVML.
 - **Default behavior:** bulk queue paused; operation mode set to health-check only.
-- **Docker Hub target:** [`weasts/media-forge`](https://hub.docker.com/r/weasts/media-forge) (public repository selected; no image tag is published yet).
+- **Docker Hub image:** [`weasts/media-forge`](https://hub.docker.com/r/weasts/media-forge) (initial release tags: `2.0.0` and `latest`).
 - **License:** MIT; see [`LICENSE`](LICENSE) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 ## Product screenshots and diagrams

@@ -7,7 +7,7 @@
 3. Confirm the GPU is working on the host and visible in a test container before starting GPU-Forge.
 4. Choose persistent configuration storage and writable media directories. The container must be able to read and write every configured media root.
 
-The image is based on `linuxserver/ffmpeg:version-8.1.2-cli` and installs Python 3.12 plus the service dependencies. Supported decoding/encoding depends on GPU generation, codec profile/pixel format, and driver compatibility.
+The image uses Python 3.12 on Debian Bookworm and builds FFmpeg 8.1.2 with `nv-codec-headers` 13.0.19.1. NVDEC and `hevc_nvenc` are enabled without GPL or nonfree FFmpeg flags; the matching FFmpeg/header source archives and build configuration are included under `/usr/share/doc/gpu-forge/ffmpeg/`. The NVIDIA driver is supplied by the host's NVIDIA Container Toolkit. Supported decoding/encoding depends on GPU generation, codec profile/pixel format, and driver compatibility.
 
 ## Configure and launch
 
