@@ -5,12 +5,16 @@
 - **Docker Hub repository:** [`weasts/media-forge`](https://hub.docker.com/r/weasts/media-forge)
 - **Product title:** GPU-Forge
 - **Source repository:** [`PrestonWest87/Media-Forge`](https://github.com/PrestonWest87/Media-Forge)
-- **Candidate release tags:** `2.0.0` and `latest` (the application reports version 2.0.0 in `app/main.py`).
+- **Published tags:** `2.0.0` and `latest` (the application reports version 2.0.0 in `app/main.py`).
 - **Platform currently targeted:** `linux/amd64`.
+- **Image index digest:** `sha256:5cc4f50a4e7c069ee2257190ca92c4d9bb168ff1783ddc4f09bdc9ff362eca13`.
+- **Source commit:** `eac2d51`.
 
 ## Release build
 
-The selected first-release tags are `2.0.0` and `latest`. The Dockerfile builds FFmpeg 8.1.2 with NVDEC/NVENC using `nv-codec-headers` 13.0.19.1, without `--enable-gpl`, `--enable-nonfree`, `--enable-cuda-nvcc`, `--enable-libnpp`, or FDK AAC. A local build verified the LGPL output, CUDA hardware-acceleration entry, `hevc_nvenc` encoder, and embedded matching source archives/build information. Rebuild and repeat these checks for each release; retain the source archives with the image.
+The initial `2.0.0` and `latest` tags are published. The Dockerfile builds FFmpeg 8.1.2 with NVDEC/NVENC using `nv-codec-headers` 13.0.19.1, without `--enable-gpl`, `--enable-nonfree`, `--enable-cuda-nvcc`, `--enable-libnpp`, or FDK AAC. A local build verified the LGPL output, CUDA hardware-acceleration entry, `hevc_nvenc` encoder, and embedded matching source archives/build information. Buildx published SBOM and provenance attestations. Rebuild and repeat these checks for each release; retain the source archives with the image.
+
+Validation for this release included the local image build, FFmpeg configuration/license/encoder checks, container application startup/API health without a GPU, Compose validation, and all 13 CPU-only acceptance tests. A real GPU encode/decode smoke test was not run in this session because the host GPU was hot and already in use.
 
 The Dockerfile sets OCI title, description, source, documentation, MIT application-license, vendor, version, and source-revision labels. Third-party and base-image licenses are listed in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
