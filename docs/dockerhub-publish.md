@@ -7,15 +7,15 @@
 - **Source repository:** [`PrestonWest87/Media-Forge`](https://github.com/PrestonWest87/Media-Forge)
 - **Published tags:** `2.1.0` and `latest` (the application reports version 2.1.0 in `app/main.py`).
 - **Platform currently targeted:** `linux/amd64`.
-- **Image index digest:** Pending publication of the 2.1.0 release.
-- **Source commit:** Recorded after the release commit is pushed.
-- **Upscale-Forge companion:** [`weasts/upscale-forge:1.0.0`](https://hub.docker.com/r/weasts/upscale-forge), built from the local sibling source tree.
+- **Image index digest:** `sha256:6da37644e7457e941a6793b44a177839346b0b7c7d2905ee30780190560f4365`.
+- **Source commit:** `583a05c`.
+- **Upscale-Forge companion:** [`weasts/upscale-forge:1.0.0`](https://hub.docker.com/r/weasts/upscale-forge), digest `sha256:bc81cff13272f7f06b7719813e8407b65bb4ee5453c120574759d4b19b38826a`, built from the local sibling source tree.
 
 ## Release build
 
 The 2.1.0 release adds independent video, bulk-upscale, and audio compatibility queues. The Dockerfile builds FFmpeg 8.1.2 with NVDEC/NVENC using `nv-codec-headers` 13.0.19.1, without `--enable-gpl`, `--enable-nonfree`, `--enable-cuda-nvcc`, `--enable-libnpp`, or FDK AAC. The build verifies the LGPL output, CUDA hardware-acceleration entry, `hevc_nvenc` and native `aac` encoders, and embeds matching source archives/build information. Buildx publishes SBOM and provenance attestations. Retain the source archives with the image.
 
-Validation for this release includes the CPU-only acceptance suite, real FFmpeg MKV/MP4 audio-remux and decode smoke tests, FFmpeg configuration/license/encoder checks, and API/container health. Full GPU/NVDEC verification remains part of each runtime audio job and should be validated on the target host.
+Validation for this release includes 42 CPU-only acceptance tests, real FFmpeg MKV/MP4 audio-remux and decode smoke tests, FFmpeg configuration/license/encoder checks, image pulls/manifest inspection, and API/container health. Full GPU/NVDEC verification remains part of each runtime audio job and should be validated on the target host.
 
 The Dockerfile sets OCI title, description, source, documentation, MIT application-license, vendor, version, and source-revision labels. Third-party and base-image licenses are listed in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
@@ -54,24 +54,17 @@ docker buildx build \
 
 `--sbom=true` and `--provenance=mode=max` publish build metadata alongside the image. Do not pass secrets as build arguments; BuildKit secrets are the appropriate mechanism for any future build-time credentials (none are required by this Dockerfile).
 
-Build/publish the Upscale-Forge companion from the sibling source tree as a separate image:
+Build/publish the Upscale-Forge companion from the sibling source tree as a separate image (its source directory is outside this Git repository):
 
 ```sh
-UPSCALE_IMAGE=weasts/upscale-forge
-UPSCALE_VERSION=1.0.0
-
-docker buildx build \
-  --platform linux/amd64 \
-  --sbom=true \
-  --provenance=mode=max \
-  --build-arg UPSCALE_FORGE_VERSION="$UPSCALE_VERSION" \
-  --tag "$UPSCALE_IMAGE:$UPSCALE_VERSION" \
-  --tag "$UPSCALE_IMAGE:latest" \
-  --push \
-  ../upscaler
+cd ../upscaler
+docker compose build upscale-forge
+docker push weasts/upscale-forge:1.0.0
+docker tag weasts/upscale-forge:1.0.0 weasts/upscale-forge:latest
+docker push weasts/upscale-forge:latest
 ```
 
-The companion source directory is outside this Git repository; retain its source snapshot and `MODEL_LICENSES.md` with the release record. The Upscale-Forge Compose project uses the published `weasts/upscale-forge:1.0.0` image by default and continues to share the configured state database and media mounts with GPU-Forge.
+The companion image includes its `MODEL_LICENSES.md` and the matching GPL FFmpeg source archive/build information. The Upscale-Forge Compose project uses the published `weasts/upscale-forge:1.0.0` image by default and continues to share the configured state database and media mounts with GPU-Forge.
 
 The image carries application/third-party notices at `/usr/share/doc/gpu-forge/` and matching FFmpeg/NV codec-header source archives at `/usr/share/doc/gpu-forge/ffmpeg/sources/`. To extract them from a published image:
 
