@@ -1,6 +1,6 @@
 services:
   gpu-forge:
-    image: ${GPU_FORGE_IMAGE:-gpu-forge:local}
+    image: ${GPU_FORGE_IMAGE:-weasts/media-forge:2.1.0}
     build:
       context: .
       dockerfile: Dockerfile
@@ -11,8 +11,11 @@ services:
       - "${GPU_FORGE_BIND_IP:-127.0.0.1}:${GPU_FORGE_PORT:-8090}:8090"
     environment:
       TZ: ${TZ:-Etc/UTC}
+      LOG_LEVEL: ${GPU_FORGE_LOG_LEVEL:-INFO}
+      GPU_FORGE_LOG_FILE: /config/gpu-forge.log
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+      GPU_FORGE_UPSCALE_DB_PATH: /upscale-forge-config/state.db
     deploy:
       resources:
         reservations:
@@ -24,3 +27,4 @@ services:
       - ${GPU_FORGE_CONFIG_PATH:-./config}:/config
       - ${MEDIA_MOVIES_PATH:?Set MEDIA_MOVIES_PATH in .env}:/media/movies
       - ${MEDIA_TV_PATH:?Set MEDIA_TV_PATH in .env}:/media/tv
+      - ${UPSCALE_FORGE_CONFIG_PATH:-../upscaler/config}:/upscale-forge-config:rw

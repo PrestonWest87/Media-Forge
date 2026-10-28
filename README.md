@@ -4,7 +4,7 @@
 [![Docker Image Version](https://img.shields.io/docker/v/weasts/media-forge?sort=semver)](https://hub.docker.com/r/weasts/media-forge)
 [![Docker Pulls](https://img.shields.io/docker/pulls/weasts/media-forge)](https://hub.docker.com/r/weasts/media-forge)
 
-**GPU-Forge** is the media-processing service in the **Media-Forge** repository. It scans mounted libraries, verifies complete video decodes with NVIDIA NVDEC, and can intelligently transcode suitable sources to H.265 with `hevc_nvenc`. A web dashboard provides queue controls, GPU telemetry, progress reporting, settings, and backup recovery.
+**GPU-Forge** is the media-processing service in the **Media-Forge** repository. It scans mounted libraries, verifies complete video decodes with NVIDIA NVDEC, can intelligently transcode suitable sources to H.265 with `hevc_nvenc`, and integrates with Upscale-Forge plus an independent AAC compatibility queue. A web dashboard provides queue controls, GPU telemetry, progress reporting, settings, and backup recovery.
 
 It is designed for Linux hosts with Docker Compose, a compatible NVIDIA driver, and NVIDIA Container Toolkit. It does not silently fall back to software video decoding or encoding.
 
@@ -12,8 +12,8 @@ It is designed for Linux hosts with Docker Compose, a compatible NVIDIA driver, 
 
 - **Purpose:** GPU-accelerated media health checks and optional smart H.265 transcodes.
 - **Runtime:** Python 3.12, FastAPI, SQLite, FFmpeg 8.1.2, NVIDIA NVML.
-- **Default behavior:** bulk queue paused; operation mode set to health-check only.
-- **Docker Hub image:** [`weasts/media-forge`](https://hub.docker.com/r/weasts/media-forge) (`2.0.0` and `latest`).
+- **Default behavior:** upscale, video, and audio bulk queues paused; operation mode set to health-check only.
+- **Docker Hub image:** [`weasts/media-forge`](https://hub.docker.com/r/weasts/media-forge) (`2.1.0` and `latest`).
 - **License:** MIT; see [`LICENSE`](LICENSE) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 ## Product screenshots and diagrams
@@ -47,13 +47,21 @@ The image slots below are reserved for sanitized product screenshots. Add the co
 ## Capabilities
 
 - Recursively scans configured roots for supported video containers and stores file metadata/job state in SQLite.
+- Probes codec, container, bitrate, and resolution during scans, then labels files as **Transcode**, **Leave alone**, or **Upscale candidate**.
+- Records verified transcode state and output fingerprints so unchanged outputs stay completed across rescans and queue restarts.
+- Identifies low-resolution Upscale-Forge candidates; the sibling worker preserves source frame timestamps and verifies A/V timing before replacement.
+- Lets an operator select a candidate, choose 720p/1080p/1440p output, and queue a manual upscale ahead of health/transcode work.
+- Provides a separate bulk upscale queue for all eligible low-resolution candidates at the selected target, prioritized ahead of video and audio queues.
+- Keeps the original beside every upscaled result until manual restore or purge.
 - Runs complete source and output decodes with CUDA surfaces and FFmpeg `-xerror`.
 - Routes supported codecs above bitrate efficiency floors to H.265/NVENC when smart transcode mode is enabled.
 - Preserves audio streams by copy and handles subtitle mapping according to output container.
+- Provides an independently started audio compatibility queue that adds one default AAC-LC stereo fallback while copying the video and preserving original audio tracks.
 - Requires output metadata checks and full NVDEC verification before installing a transcode.
 - Uses same-directory atomic file renames, optional retained originals, and startup recovery for interrupted swaps.
 - Reports core/NVDEC/NVENC utilization, VRAM, temperature, worker progress, queue status, and space savings.
 - Pauses its own FFmpeg children to yield to configured external GPU activity and thermal limits.
+- Reconciles orphaned yield-paused jobs while preserving already-committed transcodes.
 - Exposes a JSON API and interactive OpenAPI documentation at `/docs`.
 
 ## Requirements
@@ -97,7 +105,7 @@ Open `http://127.0.0.1:8090` when using the sample bind address. Check `GET /api
 
 ### 3. Start safely
 
-The first startup scan indexes the configured roots, but the bulk queue remains paused. Use **Scan Library**, select one file, and run **NVDEC-only Test** first. For a supported non-HEVC source, **Full Pipeline Test** exercises the complete encode/verification path and retains the original backup. Choose **Check + Smart H.265 Transcode** and click **Start Full Queue** only when bulk transcodes are intended.
+The first startup scan indexes the configured roots, but all bulk queues remain paused. Use **Scan Library**, select one file, and run **NVDEC-only Test** first. For a supported non-HEVC source, **Full Pipeline Test** exercises the complete encode/verification path and retains the original backup. Choose **Check + Smart H.265 Transcode** and click **Start Video Queue** only when bulk video work is intended. Choose an upscale target and click **Start Upscale Queue** to enqueue eligible low-resolution candidates, or click **Start Audio Queue** separately to add AAC fallback tracks without re-encoding video.
 
 ## First-run checklist
 
@@ -120,6 +128,14 @@ GPU-Forge runs a source NVDEC check, then considers H.264, MPEG-2 Video, MPEG-4 
 
 The transcode uses `hevc_nvenc`. The temporary output must be non-empty, preserve required duration/audio metadata, save at least 7%, and pass a full NVDEC decode. Only after these gates pass does a same-directory rename install it. A retained backup policy keeps the original available after successful replacement.
 
+### Audio compatibility queue
+
+The separate **Audio Queue** selects the first default audio stream (or the first audio stream when no default is marked). If it is not already AAC-LC mono/stereo at 48 kHz or lower, GPU-Forge copies the video and all original audio streams, adds one AAC-LC stereo fallback, and marks the new track as the default. The audio queue runs below the video queue priority, does not run the H.265 encoder, and does not call Jellyfin; refresh the Jellyfin library separately after processing.
+
+### Bulk upscale queue
+
+The separate **Upscale Queue** enqueues every eligible `UPSCALE` candidate at the target selected in the dashboard. It remains paused until started and runs ahead of video and audio bulk work. Individual **Upscale Selected** jobs remain available and take priority over the bulk upscale queue.
+
 ### GPU scheduling
 
 NVML telemetry is polled about once per second. When external GPU activity exceeds the configured threshold, or the card reaches the thermal pause point, GPU-Forge pauses only its own FFmpeg child processes. It resumes after the configured cooling/idle conditions are met. See [architecture](docs/architecture.md) for exact behavior.
@@ -129,6 +145,7 @@ NVML telemetry is polled about once per second. When external GPU activity excee
 - `./config:/config` persists `settings.json` and the SQLite database.
 - `.gpuforge_tmp*` files are temporary outputs and are removed by safe startup recovery when abandoned.
 - `.gpuforge_bak` files hold original media during replacement or while a retained backup is available.
+- `.gpuforge_audio_bak` files are temporary rollback copies used when an audio remux operates on media that already has a retained backup.
 - The default `auto_delete` policy removes a backup after a successful verified replacement. `keep` retains it for a manual restore or purge.
 - Full Pipeline Test forces backup retention when it performs a replacement.
 - The dashboard's **Restore Selected Backup** restores a retained original; **Purge Verified Backups** permanently deletes eligible retained backups.
@@ -166,7 +183,7 @@ python -m pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
 
-The CPU-only acceptance suite stubs FFmpeg and needs no GPU or real media library. It covers command safeguards, routing, verification rollback, startup recovery, selected tests, watchdog logic, and legacy-container replacement. It does not verify real driver compatibility or perceived video quality.
+The CPU-only acceptance suite stubs FFmpeg and needs no GPU or real media library. It covers command safeguards, scan metadata/action tagging, transcode persistence, yield recovery, routing, verification rollback, startup recovery, selected tests, watchdog logic, and legacy-container replacement. It does not verify real driver compatibility or perceived video quality.
 
 ## Security and privacy
 

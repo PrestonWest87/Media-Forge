@@ -27,7 +27,8 @@ class Settings(BaseModel):
     gpu_index: int = Field(default=0, ge=0)
     external_process_policy: Literal["known", "any"] = "known"
     external_gpu_utilization_threshold: int = Field(default=8, ge=0, le=100)
-    thermal_pause_c: int = Field(default=89, ge=70, le=90)
+    thermal_pause_c: int = Field(default=89, ge=70, le=95)
+    thermal_trip_dwell_sec: int = Field(default=5, ge=0, le=60)
     thermal_cooldown_sec: int = Field(default=30, ge=0, le=300)
 
 

@@ -34,6 +34,7 @@ RUN ./configure \
     make install && \
     ldconfig && \
     /usr/local/bin/ffmpeg -hide_banner -encoders 2>&1 | grep -q 'hevc_nvenc' && \
+    /usr/local/bin/ffmpeg -hide_banner -encoders 2>&1 | grep -q ' aac ' && \
     /usr/local/bin/ffmpeg -hide_banner -hwaccels 2>&1 | grep -q 'cuda' && \
     ! /usr/local/bin/ffmpeg -hide_banner -buildconf 2>&1 | grep -Eq -- '--enable-(gpl|nonfree)' && \
     mkdir -p /usr/share/doc/gpu-forge/ffmpeg/sources && \
@@ -55,7 +56,7 @@ RUN /usr/local/bin/ffmpeg -hide_banner -L 2>&1 | grep -q 'GNU Lesser General Pub
 
 FROM python:3.12-slim-bookworm AS runtime
 
-ARG APP_VERSION=2.0.0
+ARG APP_VERSION=2.1.0
 ARG VCS_REF=unknown
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -86,7 +87,7 @@ RUN ldconfig
 
 WORKDIR /app
 LABEL org.opencontainers.image.title="GPU-Forge" \
-      org.opencontainers.image.description="GPU-accelerated media verification and smart H.265 transcoding with NVIDIA NVDEC/NVENC" \
+      org.opencontainers.image.description="GPU-accelerated media verification, H.265 transcoding, bulk upscaling integration, and default AAC compatibility tracks" \
       org.opencontainers.image.source="https://github.com/PrestonWest87/Media-Forge" \
       org.opencontainers.image.documentation="https://github.com/PrestonWest87/Media-Forge/tree/main/docs" \
       org.opencontainers.image.licenses="MIT" \

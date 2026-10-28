@@ -35,6 +35,8 @@ class GpuWatchdog:
         self._yield_reason: str | None = None
         self._external_yielding = False
         self._thermal_yielding = False
+        self._thermal_trip_started: float | None = None
+        self._thermal_trip_threshold_c: int | None = None
         self._yield_probe = False
         self._yield_probe_started: float | None = None
         self._observed_external_pids: set[int] = set()
@@ -61,6 +63,8 @@ class GpuWatchdog:
             "thermal_shutdown_threshold_c": None,
             "thermal_pause_threshold_c": 82,
             "thermal_resume_threshold_c": 75,
+            "thermal_trip_dwell_sec": 5,
+            "thermal_trip_remaining_sec": 0,
             "thermal_yielding": False,
             "thermal_cooldown_remaining_sec": 0,
             "yielding": False,
@@ -76,6 +80,8 @@ class GpuWatchdog:
         self._yield_reason = None
         self._external_yielding = False
         self._thermal_yielding = False
+        self._thermal_trip_started = None
+        self._thermal_trip_threshold_c = None
         self._yield_probe = False
         self._yield_probe_started = None
         self._observed_external_pids.clear()
@@ -127,6 +133,8 @@ class GpuWatchdog:
             except Exception:
                 logger.debug("NVML shutdown failed", exc_info=True)
             self._nvml_initialized = False
+        self._thermal_trip_started = None
+        self._thermal_trip_threshold_c = None
 
     def register_child(self, pid: int) -> None:
         self.internal_pids.add(pid)
@@ -265,37 +273,57 @@ class GpuWatchdog:
             self._yield_probe_started = time.monotonic()
             self._external_cooldown_started = None
 
-        # The card reports a slowdown limit of 94 C and shutdown at 97 C.
-        # Pause at the lower of the user limit or five degrees below the NVML
-        # slowdown point, then require a cool dwell before allowing more work.
+        # Stay one degree below hardware slowdown when that limit is available.
+        # Require the configured sustained-temperature dwell before pausing;
+        # hardware shutdown remains an immediate stop condition.
         slowdown_c = self._telemetry.get("thermal_slowdown_threshold_c")
         pause_c = settings.thermal_pause_c
         if slowdown_c is not None:
-            pause_c = min(pause_c, int(slowdown_c) - 5)
+            pause_c = min(pause_c, int(slowdown_c) - 1)
         pause_c = max(60, int(pause_c))
         resume_c = max(50, pause_c - 7)
         temperature_c = self._telemetry.get("temperature_c")
+        shutdown_c = self._telemetry.get("thermal_shutdown_threshold_c")
 
         if not self._thermal_yielding:
             if temperature_c is not None and temperature_c >= pause_c:
-                self._thermal_yielding = True
-                self._thermal_cooldown_started = None
-                logger.warning(
-                    "Thermal yield engaged at %s C (pause %s C, resume at or below %s C)",
-                    temperature_c,
-                    pause_c,
-                    resume_c,
-                )
+                if (
+                    self._thermal_trip_started is None
+                    or self._thermal_trip_threshold_c != pause_c
+                ):
+                    self._thermal_trip_started = now
+                    self._thermal_trip_threshold_c = pause_c
+                shutdown_imminent = shutdown_c is not None and temperature_c >= shutdown_c
+                if (
+                    shutdown_imminent
+                    or now - self._thermal_trip_started >= settings.thermal_trip_dwell_sec
+                ):
+                    self._thermal_yielding = True
+                    self._thermal_trip_started = None
+                    self._thermal_trip_threshold_c = None
+                    self._thermal_cooldown_started = None
+                    logger.warning(
+                        "Thermal yield engaged at %s C (pause %s C, resume at or below %s C)",
+                        temperature_c,
+                        pause_c,
+                        resume_c,
+                    )
+            else:
+                self._thermal_trip_started = None
+                self._thermal_trip_threshold_c = None
         elif temperature_c is None or temperature_c > resume_c:
             self._thermal_cooldown_started = None
         elif self._thermal_cooldown_started is None:
             self._thermal_cooldown_started = now
         elif now - self._thermal_cooldown_started >= settings.thermal_cooldown_sec:
             self._thermal_yielding = False
+            self._thermal_trip_started = None
+            self._thermal_trip_threshold_c = None
             self._thermal_cooldown_started = None
             logger.info("Thermal cool-down complete at %s C", temperature_c)
 
         thermal_cooldown_remaining = 0
+        thermal_trip_remaining = 0
         if self._thermal_yielding:
             thermal_cooldown_remaining = settings.thermal_cooldown_sec
             if self._thermal_cooldown_started is not None:
@@ -303,10 +331,20 @@ class GpuWatchdog:
                     0,
                     int(settings.thermal_cooldown_sec - (now - self._thermal_cooldown_started)),
                 )
+        elif self._thermal_trip_started is not None:
+            thermal_trip_remaining = max(
+                0,
+                int(
+                    settings.thermal_trip_dwell_sec
+                    - (now - self._thermal_trip_started)
+                ),
+            )
         self._telemetry.update(
             {
                 "thermal_pause_threshold_c": pause_c,
                 "thermal_resume_threshold_c": resume_c,
+                "thermal_trip_dwell_sec": settings.thermal_trip_dwell_sec,
+                "thermal_trip_remaining_sec": thermal_trip_remaining,
                 "thermal_yielding": self._thermal_yielding,
                 "thermal_cooldown_remaining_sec": thermal_cooldown_remaining,
             }

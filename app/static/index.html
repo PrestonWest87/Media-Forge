@@ -18,6 +18,9 @@
     .glass { background: rgba(17, 27, 40, .84); border: 1px solid rgba(122, 153, 178, .13); box-shadow: 0 12px 32px rgba(0, 0, 0, .16); }
     .metric-track { background: rgba(148, 163, 184, .12); }
     .metric-fill { transition: width .45s ease; }
+    .progress-indeterminate { width: 32% !important; animation: progress-sweep 1.4s ease-in-out infinite alternate; }
+    @keyframes progress-sweep { from { transform: translateX(-35%); } to { transform: translateX(245%); } }
+    @media (prefers-reduced-motion: reduce) { .progress-indeterminate { animation-duration: 3s; } }
     .tab-active { color: #58e7bb; border-color: #36d6a2; background: rgba(54, 214, 162, .08); }
     .scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
     .scrollbar::-webkit-scrollbar-thumb { background: #26374a; border-radius: 8px; }
@@ -38,7 +41,7 @@
             <h1 class="text-lg font-semibold tracking-[.16em] text-white">GPU-FORGE</h1>
             <span class="rounded border border-slate-700 px-1.5 py-0.5 text-[9px] font-semibold tracking-widest text-slate-400">MEDIA OPS</span>
           </div>
-          <p class="mt-0.5 text-xs text-slate-500">NVDEC verification <span class="px-1 text-slate-700">/</span> NVENC H.265 pipeline</p>
+          <p class="mt-0.5 text-xs text-slate-500">NVDEC verification <span class="px-1 text-slate-700">/</span> NVENC H.265 <span class="px-1 text-slate-700">/</span> AAC audio compatibility</p>
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-3">
@@ -46,7 +49,9 @@
           <span class="h-1.5 w-1.5 rounded-full bg-slate-500"></span><span>IDLE</span>
         </span>
         <span id="updatedAt" class="hidden text-xs text-slate-500 sm:inline">Connecting…</span>
-        <button id="queueButton" class="rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-3.5 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-400/10">Start Full Queue</button>
+        <button id="upscaleQueueButton" title="Bulk upscale eligible candidates at the selected target resolution" class="rounded-lg border border-cyan-400/30 bg-cyan-400/5 px-3.5 py-2 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-400/10">Start Upscale Queue</button>
+        <button id="queueButton" class="rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-3.5 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-400/10">Start Video Queue</button>
+        <button id="audioQueueButton" title="Run the audio-only AAC compatibility queue independently of video transcoding" class="rounded-lg border border-cyan-400/30 bg-cyan-400/5 px-3.5 py-2 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-400/10">Start Audio Queue</button>
         <button id="scanButton" class="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-3.5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-wait disabled:opacity-60">
           <svg viewBox="0 0 20 20" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16.2 7.8A6.5 6.5 0 1 0 16.5 11M16.2 3.8v4h-4"/></svg>
           Scan Library
@@ -91,7 +96,7 @@
           </div>
           <div class="metric-track mt-4 h-2 overflow-hidden rounded-full"><div id="progressBar" class="metric-fill h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400" style="width:0%"></div></div>
           <div id="fileProgressSection" class="mt-4 hidden">
-            <div class="mb-2 flex items-center justify-between gap-3 text-[11px]"><span id="fileProgressLabel" class="text-slate-400">Current file</span><strong id="fileProgressValue" class="tabular-nums text-cyan-200">0%</strong></div>
+            <div class="mb-2 flex items-center justify-between gap-3 text-[11px]"><span id="fileProgressLabel" class="min-w-0 flex-1 truncate text-slate-400">Current file</span><strong id="fileProgressValue" class="shrink-0 tabular-nums text-cyan-200">0%</strong></div>
             <div class="metric-track h-1.5 overflow-hidden rounded-full"><div id="fileProgressBar" class="metric-fill h-full rounded-full bg-cyan-400" style="width:0%"></div></div>
           </div>
           <div class="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-500">
@@ -100,12 +105,34 @@
             <span>GPU <strong id="gpuIndex" class="ml-1 font-semibold text-slate-200">—</strong></span>
             <span id="gpuError" class="hidden text-rose-300"></span>
           </div>
+          <div class="mt-4 border-t border-slate-800 pt-3">
+            <div class="flex items-center justify-between gap-3"><p class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Next up · manual upscale has priority</p><span id="upNextCount" class="text-[10px] text-slate-600">0 shown</span></div>
+            <ol id="upNextList" class="mt-2 space-y-1 text-xs text-slate-400"><li class="text-slate-600">No queued work</li></ol>
+          </div>
         </article>
         <div class="grid grid-cols-2 gap-3">
           <article class="glass rounded-xl p-4"><p class="text-xs font-medium uppercase tracking-wider text-slate-500">Files Checked</p><p id="checkedValue" class="mt-2 text-2xl font-semibold tabular-nums text-white">0</p><p id="totalValue" class="mt-1 text-xs text-slate-500">0 in library</p></article>
           <article class="glass rounded-xl p-4"><p class="text-xs font-medium uppercase tracking-wider text-slate-500">Space Saved</p><p id="savedValue" class="mt-2 text-2xl font-semibold tabular-nums text-emerald-300">0 GB</p><p class="mt-1 text-xs text-slate-500">Verified H.265 replacements</p></article>
           <article class="glass col-span-2 rounded-xl p-4"><div class="flex items-center justify-between gap-2"><div><p class="text-xs font-medium uppercase tracking-wider text-slate-500">Held Backups</p><p id="backupValue" class="mt-1 text-xl font-semibold tabular-nums text-white">0 GB</p></div><span class="rounded-md border border-amber-400/20 bg-amber-400/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-200">Paranoid Hold</span></div></article>
         </div>
+      </section>
+
+      <section id="upscalePreviewSection" class="glass hidden rounded-xl p-4 sm:p-5">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 class="text-sm font-semibold text-white">Live Upscale Preview</h2><p id="upscalePreviewStatus" class="mt-1 text-xs text-slate-500">Waiting for the first sampled frame</p></div>
+          <span class="rounded-md border border-cyan-400/20 bg-cyan-400/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">Every 3 frames</span>
+        </div>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2">
+          <figure class="min-w-0 rounded-lg border border-slate-800 bg-slate-950/50 p-2">
+            <figcaption class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Before · source frame</figcaption>
+            <img id="upscaleBeforePreview" alt="Source video frame before upscaling" class="aspect-video max-h-72 w-full rounded object-contain" decoding="async">
+          </figure>
+          <figure class="min-w-0 rounded-lg border border-slate-800 bg-slate-950/50 p-2">
+            <figcaption class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">After · AI-upscaled frame</figcaption>
+            <img id="upscaleAfterPreview" alt="Video frame after AI upscaling" class="aspect-video max-h-72 w-full rounded object-contain" decoding="async">
+          </figure>
+        </div>
+        <p class="mt-2 text-[10px] text-slate-600">Preview JPEGs are temporary and removed when a newer frame is displayed or the upscale ends.</p>
       </section>
 
       <section class="glass rounded-xl p-4 sm:p-5">
@@ -120,11 +147,12 @@
           <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">NVENC Preset</span><select id="nvencPreset" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="p4">p4 · Fast High-Efficiency</option><option value="p6">p6 · Max Compression</option></select></label>
           <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">External GPU Yield</span><select id="externalPolicy" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="known">FFmpeg / Jellyfin</option><option value="any">Any external GPU process</option></select></label>
           <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">Yield Threshold</span><select id="externalGpuThreshold" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="5">Over 5% GPU activity</option><option value="8">Over 8% · Default</option><option value="10">Over 10% GPU activity</option><option value="15">Over 15% GPU activity</option><option value="20">Over 20% GPU activity</option></select></label>
-          <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">Thermal Pause</span><select id="thermalPause" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="82">82 °C</option><option value="85">85 °C</option><option value="87">87 °C</option><option value="89">89 °C · Default</option></select></label>
+          <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">Thermal Pause</span><select id="thermalPause" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="82">82 °C</option><option value="85">85 °C</option><option value="87">87 °C</option><option value="89">89 °C</option><option value="93">93 °C · User target</option></select></label>
+          <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">Thermal Trigger Dwell</span><select id="thermalTripDwell" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="0">Immediate</option><option value="5" selected>5 seconds · Default</option><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option></select></label>
           <label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-400">Thermal Cool-down</span><select id="thermalCooldown" class="w-full rounded-lg border border-slate-700 px-3 py-2.5 text-sm text-slate-200 outline-none transition focus:border-emerald-400"><option value="15">15 seconds</option><option value="30">30 seconds · Default</option><option value="45">45 seconds</option><option value="60">60 seconds</option></select></label>
         </div>
         <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
-          <p class="max-w-3xl text-xs leading-relaxed text-slate-500">External yield uses the busiest GPU engine above its threshold. Thermal protection pauses below NVML’s slowdown limit, then resumes after cooling and a dwell period. Media decodes remain pinned to CUDA surfaces.</p>
+          <p class="max-w-3xl text-xs leading-relaxed text-slate-500">External yield watches the selected external-process policy and busiest GPU engine. Thermal pause triggers after the selected temperature is sustained for its dwell, then resumes after cooling and the cool-down dwell. Media decodes remain pinned to CUDA surfaces.</p>
           <button id="purgeButton" class="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3.5 py-2 text-xs font-semibold text-amber-200 transition hover:bg-amber-400/10">Purge Verified Backups</button>
         </div>
       </section>
@@ -132,27 +160,34 @@
       <section class="glass overflow-hidden rounded-xl">
         <div class="border-b border-slate-800 p-4 sm:p-5">
           <div class="flex flex-wrap items-center justify-between gap-4">
-            <div><h2 class="text-sm font-semibold text-white">Media Results</h2><p class="mt-1 text-xs text-slate-500">Select one file for NVDEC-only testing or a full source-check → H.265 transcode → output-check test with a retained backup. HEVC/AV1 inputs only need the health check.</p></div>
+            <div><h2 class="text-sm font-semibold text-white">Media Results</h2><p class="mt-1 text-xs text-slate-500">Select a low-resolution candidate and choose Upscale Selected. Manual upscale jobs run ahead of queued health checks/transcodes and retain the original backup.</p></div>
             <div class="flex flex-wrap items-center gap-2">
               <div class="relative"><svg viewBox="0 0 20 20" class="absolute left-3 top-2.5 h-4 w-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8.8" cy="8.8" r="5.6"/><path d="m13 13 4 4"/></svg><input id="searchInput" type="search" placeholder="Find a file…" class="w-52 rounded-lg border border-slate-700 bg-slate-950/70 py-2 pl-9 pr-3 text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:border-emerald-400"></div>
-              <button id="fullTestButton" disabled class="rounded-lg border border-violet-400/30 bg-violet-400/5 px-3 py-2 text-xs font-semibold text-violet-200 transition hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-40">Full Pipeline Test</button>
+              <label class="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950/50 px-2.5 py-1.5 text-[10px] text-slate-400"><span>Target</span><select id="upscaleTarget" class="rounded bg-transparent px-1 py-1 text-xs text-slate-200 outline-none"><option value="720">720p</option><option value="1080" selected>1080p</option><option value="1440">1440p</option></select></label>
+               <button id="upscaleButton" disabled class="rounded-lg border border-cyan-400/30 bg-cyan-400/5 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-40">Upscale Selected</button>
+               <button id="cancelUpscaleButton" disabled class="rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-400/10 disabled:cursor-not-allowed disabled:opacity-40">Cancel Upscale</button>
+               <button id="fullTestButton" disabled class="rounded-lg border border-violet-400/30 bg-violet-400/5 px-3 py-2 text-xs font-semibold text-violet-200 transition hover:bg-violet-400/10 disabled:cursor-not-allowed disabled:opacity-40">Full Pipeline Test</button>
               <button id="testButton" disabled class="rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-40">NVDEC-only Test</button>
               <button id="restoreButton" disabled class="rounded-lg border border-rose-400/30 bg-rose-400/5 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-400/10 disabled:cursor-not-allowed disabled:opacity-40">Restore Selected Backup</button>
             </div>
           </div>
           <div id="filterTabs" class="scrollbar mt-4 flex gap-1 overflow-x-auto border-b border-slate-800">
             <button data-filter="active" class="filter-tab tab-active shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium">Active / Pending</button>
+            <button data-filter="audio_pending" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Audio Queue</button>
             <button data-filter="corrupt" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Corrupt</button>
             <button data-filter="transcoded" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Transcoded &amp; Verified</button>
+             <button data-filter="upscaled" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Upscaled &amp; Verified</button>
+             <button data-filter="cancelled" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Cancelled</button>
+             <button data-filter="upscale_candidates" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Upscale Candidates</button>
             <button data-filter="skipped" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Skipped / Already Optimal</button>
             <button data-filter="unsupported" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Unsupported Hardware</button>
             <button data-filter="failed" class="filter-tab shrink-0 border-b-2 border-transparent px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-200">Transcode Failed</button>
           </div>
         </div>
         <div class="scrollbar overflow-x-auto">
-          <table class="w-full min-w-[980px] border-collapse text-left">
-            <thead class="bg-slate-950/45 text-[10px] uppercase tracking-wider text-slate-500"><tr><th class="w-10 px-4 py-3" title="Select a file to test or restore">Select</th><th class="px-3 py-3 font-medium">Media File</th><th class="px-3 py-3 font-medium">Status</th><th class="px-3 py-3 font-medium">Codec</th><th class="px-3 py-3 font-medium">Resolution</th><th class="px-3 py-3 font-medium">Size</th><th class="px-3 py-3 font-medium">Duration</th><th class="px-3 py-3 font-medium">Updated</th><th class="px-4 py-3 text-right font-medium">Action</th></tr></thead>
-            <tbody id="resultsBody" class="divide-y divide-slate-800/70"><tr><td colspan="9" class="px-4 py-12 text-center text-sm text-slate-500">Loading media results…</td></tr></tbody>
+          <table class="w-full min-w-[1260px] border-collapse text-left">
+            <thead class="bg-slate-950/45 text-[10px] uppercase tracking-wider text-slate-500"><tr><th class="w-10 px-4 py-3" title="Select a file to test, upscale, or restore">Select</th><th class="px-3 py-3 font-medium">Media File</th><th class="px-3 py-3 font-medium">Status</th><th class="px-3 py-3 font-medium">Codec</th><th class="px-3 py-3 font-medium">Audio</th><th class="px-3 py-3 font-medium">Container</th><th class="px-3 py-3 font-medium">Resolution</th><th class="px-3 py-3 font-medium">Plan</th><th class="px-3 py-3 font-medium">Size</th><th class="px-3 py-3 font-medium">Duration</th><th class="px-3 py-3 font-medium">Processed / Updated</th><th class="px-4 py-3 text-right font-medium">Operation</th></tr></thead>
+            <tbody id="resultsBody" class="divide-y divide-slate-800/70"><tr><td colspan="12" class="px-4 py-12 text-center text-sm text-slate-500">Loading media results…</td></tr></tbody>
           </table>
         </div>
         <div class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 px-4 py-3 text-xs text-slate-500"><span id="resultCount">0 files</span><span>Originals are preserved until replacement verification completes.</span></div>
@@ -162,7 +197,7 @@
   <div id="toastArea" class="pointer-events-none fixed bottom-4 right-4 z-50 space-y-2"></div>
 
   <script>
-    const state = { filter: 'active', search: '', settings: null, selectedId: null, selectedHasBackup: false, queueEnabled: false, expandedErrorIds: new Set(), lastFilesSignature: null, refreshTimer: null };
+    const state = { filter: 'active', search: '', settings: null, selectedId: null, selectedHasBackup: false, selectedAction: 'LEAVE_ALONE', selectedStatus: null, selectedAudioStatus: null, queueEnabled: false, upscaleQueueEnabled: false, audioQueueEnabled: false, expandedErrorIds: new Set(), lastFilesSignature: null, refreshTimer: null, previewFileId: null, previewId: null, previewObjectUrls: [], previewTimer: null, previewLoading: false };
     const $ = (id) => document.getElementById(id);
     const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
     const formatBytes = (bytes) => {
@@ -196,8 +231,8 @@
     }
     function setGpuState(value) {
       const element = $('gpuState');
-      const label = value === 'PAUSED_THERMAL' ? 'PAUSED · THERMAL COOLING' : value === 'PAUSED_YIELD' ? 'PAUSED · YIELDING TO JELLYFIN / GPU APP' : value === 'VERIFYING_OUTPUT' ? 'VERIFYING NEW FILE' : value === 'ACTIVE' ? 'ACTIVE' : value === 'UNAVAILABLE' ? 'GPU UNAVAILABLE' : 'IDLE';
-      const classes = value === 'PAUSED_THERMAL' ? ['border-rose-400/30','bg-rose-400/5','text-rose-200','bg-rose-300'] : value === 'PAUSED_YIELD' ? ['border-amber-400/30','bg-amber-400/5','text-amber-200','bg-amber-300'] : value === 'ACTIVE' || value === 'VERIFYING_OUTPUT' ? ['border-emerald-400/30','bg-emerald-400/5','text-emerald-200','bg-emerald-300'] : value === 'UNAVAILABLE' ? ['border-rose-400/30','bg-rose-400/5','text-rose-200','bg-rose-300'] : ['border-slate-700','bg-slate-900/80','text-slate-300','bg-slate-500'];
+      const label = value === 'PAUSED_THERMAL' ? 'PAUSED · THERMAL COOLING' : value === 'PAUSED_YIELD' ? 'PAUSED · YIELDING TO GPU APP' : value === 'WAITING_UPSCALE_GPU' ? 'WAITING · GPU SAFETY HOLD' : value === 'UPSCALING' ? 'UPSCALING · MANUAL PRIORITY' : value === 'CANCELLING_UPSCALE' ? 'CANCELLING UPSCALE' : value === 'WAITING_UPSCALE_FORGE' ? 'WAITING FOR UPSCALE-FORGE' : value === 'VERIFYING_UPSCALE' ? 'VERIFYING UPSCALE' : value === 'VERIFYING_OUTPUT' ? 'VERIFYING NEW FILE' : value === 'ACTIVE' ? 'ACTIVE' : value === 'UNAVAILABLE' ? 'GPU UNAVAILABLE' : 'IDLE';
+      const classes = value === 'PAUSED_THERMAL' ? ['border-rose-400/30','bg-rose-400/5','text-rose-200','bg-rose-300'] : value === 'PAUSED_YIELD' || value === 'WAITING_UPSCALE_GPU' ? ['border-amber-400/30','bg-amber-400/5','text-amber-200','bg-amber-300'] : value === 'UPSCALING' || value === 'CANCELLING_UPSCALE' || value === 'WAITING_UPSCALE_FORGE' || value === 'VERIFYING_UPSCALE' ? ['border-cyan-400/30','bg-cyan-400/5','text-cyan-200','bg-cyan-300'] : value === 'ACTIVE' || value === 'VERIFYING_OUTPUT' ? ['border-emerald-400/30','bg-emerald-400/5','text-emerald-200','bg-emerald-300'] : value === 'UNAVAILABLE' ? ['border-rose-400/30','bg-rose-400/5','text-rose-200','bg-rose-300'] : ['border-slate-700','bg-slate-900/80','text-slate-300','bg-slate-500'];
       element.className = `inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold tracking-wide ${classes.slice(0,3).join(' ')}`;
       element.innerHTML = `<span class="h-1.5 w-1.5 rounded-full ${classes[3]}"></span><span>${label}</span>`;
     }
@@ -205,6 +240,95 @@
       const safe = Math.max(0, Math.min(100, Number(value || 0)));
       $(valueId).innerHTML = `${Math.round(safe)}<small class="ml-1 text-sm font-medium text-slate-500">${suffix}</small>`;
       $(barId).style.width = `${safe}%`;
+    }
+    function loadPreviewImage(url) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = resolve;
+        image.onerror = reject;
+        image.src = url;
+      });
+    }
+    async function pollUpscalePreview() {
+      if (state.previewLoading || state.previewFileId == null) return;
+      const fileId = state.previewFileId;
+      state.previewLoading = true;
+      try {
+        const status = await api(`/api/files/${fileId}/upscale/preview`);
+        if (fileId !== state.previewFileId || !status.available || status.preview_id === state.previewId) {
+          if (!status.available && fileId === state.previewFileId) $('upscalePreviewStatus').textContent = 'Waiting for the first sampled frame';
+          return;
+        }
+        const token = encodeURIComponent(status.preview_id);
+        const [beforeResponse, afterResponse] = await Promise.all([
+          fetch(`/api/files/${fileId}/upscale/preview/${token}/before`, { cache: 'no-store' }),
+          fetch(`/api/files/${fileId}/upscale/preview/${token}/after`, { cache: 'no-store' })
+        ]);
+        if (!beforeResponse.ok || !afterResponse.ok) return;
+        const [beforeBlob, afterBlob] = await Promise.all([beforeResponse.blob(), afterResponse.blob()]);
+        const nextUrls = [URL.createObjectURL(beforeBlob), URL.createObjectURL(afterBlob)];
+        try {
+          await Promise.all(nextUrls.map(loadPreviewImage));
+        } catch (error) {
+          nextUrls.forEach((url) => URL.revokeObjectURL(url));
+          throw error;
+        }
+        if (fileId !== state.previewFileId) {
+          nextUrls.forEach((url) => URL.revokeObjectURL(url));
+          return;
+        }
+        $('upscaleBeforePreview').src = nextUrls[0];
+        $('upscaleAfterPreview').src = nextUrls[1];
+        const oldUrls = state.previewObjectUrls;
+        state.previewObjectUrls = nextUrls;
+        const oldPreviewId = state.previewId;
+        state.previewId = status.preview_id;
+        $('upscalePreviewStatus').textContent = `Segment ${Number(status.segment_index) + 1} · frame ${Number(status.frame_index).toLocaleString()}`;
+        oldUrls.forEach((url) => URL.revokeObjectURL(url));
+        await api(`/api/files/${fileId}/upscale/preview/${token}/displayed`, { method: 'POST' });
+        if (oldPreviewId && oldPreviewId !== status.preview_id) {
+          console.debug(`Removed superseded upscale preview ${oldPreviewId}`);
+        }
+      } catch (error) {
+        if (fileId === state.previewFileId && error?.name !== 'AbortError') console.debug('Upscale preview refresh deferred', error);
+      } finally {
+        state.previewLoading = false;
+      }
+    }
+    function stopUpscalePreview() {
+      if (state.previewTimer) clearInterval(state.previewTimer);
+      state.previewTimer = null;
+      const oldFileId = state.previewFileId;
+      state.previewFileId = null;
+      state.previewId = null;
+      state.previewObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+      state.previewObjectUrls = [];
+      $('upscaleBeforePreview').removeAttribute('src');
+      $('upscaleAfterPreview').removeAttribute('src');
+      $('upscalePreviewSection').classList.add('hidden');
+      $('upscalePreviewStatus').textContent = 'Waiting for the first sampled frame';
+      if (oldFileId != null) {
+        api(`/api/files/${oldFileId}/upscale/preview/cleanup`, { method: 'POST' }).catch(() => {});
+      }
+    }
+    function updateUpscalePreview(worker) {
+      const activePhases = new Set([
+        'WAITING_UPSCALE_FORGE', 'PREPARING_UPSCALE_SEGMENTS', 'INITIALIZING_UPSCALE_MODEL',
+        'UPSCALING', 'WAITING_UPSCALE_GPU', 'FINALIZING_UPSCALE', 'VERIFYING_UPSCALE'
+      ]);
+      const fileId = activePhases.has(worker.current_phase) ? Number(worker.current_file_id) : null;
+      if (!fileId) {
+        if (state.previewFileId != null) stopUpscalePreview();
+        return;
+      }
+      $('upscalePreviewSection').classList.remove('hidden');
+      if (state.previewFileId !== fileId) {
+        if (state.previewFileId != null) stopUpscalePreview();
+        state.previewFileId = fileId;
+        state.previewId = null;
+        state.previewTimer = setInterval(pollUpscalePreview, 1000);
+        pollUpscalePreview();
+      }
     }
     function updateTelemetry(data) {
       const gpu = data.gpu || {};
@@ -218,7 +342,10 @@
       $('vramTotal').textContent = `${total.toLocaleString()} MB`;
       $('vramBar').style.width = `${total ? Math.min(100, used * 100 / total) : 0}%`;
       $('tempValue').innerHTML = `${gpu.temperature_c == null ? '—' : escapeHtml(gpu.temperature_c)}<small class="ml-1 text-sm font-medium text-slate-500">°C</small>`;
-      $('tempHint').textContent = gpu.thermal_pause_threshold_c == null ? 'Thermal limit —' : `Pause ${gpu.thermal_pause_threshold_c}° · resume ${gpu.thermal_resume_threshold_c}°`;
+      const thermalDelay = Number(gpu.thermal_trip_dwell_sec || 0);
+      $('tempHint').textContent = gpu.thermal_pause_threshold_c == null
+        ? 'Thermal limit —'
+        : `Pause ${gpu.thermal_pause_threshold_c}°${thermalDelay ? ` after ${thermalDelay}s` : ''} · resume ${gpu.thermal_resume_threshold_c}°`;
       $('gpuIndex').textContent = gpu.available ? `#${gpu.gpu_index}` : 'Unavailable';
       $('gpuError').textContent = gpu.error || '';
       $('gpuError').classList.toggle('hidden', !gpu.error);
@@ -229,25 +356,82 @@
       $('progressCaption').textContent = worker.current_file_id ? `${checkedLabel} · current file below` : checkedLabel;
       const fileProgress = Math.max(0, Math.min(100, Number(worker.current_progress_percent || 0)));
       $('fileProgressSection').classList.toggle('hidden', !worker.current_file_id);
-      $('fileProgressValue').textContent = `${fileProgress.toFixed(1)}%`;
-      $('fileProgressBar').style.width = `${fileProgress}%`;
-      const phaseLabels = { CHECKING: 'NVDEC source health check', TRANSCODING: 'NVENC H.265 transcode', VERIFYING_OUTPUT: 'NVDEC output verification' };
-      const currentPhase = phaseLabels[worker.current_phase] || 'Media processing';
-      $('fileProgressLabel').textContent = worker.state === 'PAUSED_YIELD' ? `${currentPhase} · yielding to external GPU work` : currentPhase;
+      const loadingModel = Boolean(worker.current_progress_indeterminate);
+      const progressActivity = worker.current_phase === 'INITIALIZING_UPSCALE_MODEL'
+        ? 'Loading model'
+        : worker.current_phase === 'PREPARING_UPSCALE_SEGMENTS'
+          ? 'Preparing'
+          : 'Working';
+      $('fileProgressValue').textContent = loadingModel
+        ? `${progressActivity} · ${formatDuration(worker.current_phase_elapsed_sec || 0)}`
+        : `${fileProgress.toFixed(2)}%`;
+      $('fileProgressBar').classList.toggle('progress-indeterminate', loadingModel);
+      $('fileProgressBar').style.width = loadingModel ? '32%' : `${fileProgress}%`;
+      const targetHeight = Number(worker.current_target_height || 1080);
+      const phaseLabels = {
+        CHECKING: 'NVDEC source health check',
+        TRANSCODING: 'NVENC H.265 transcode',
+        VERIFYING_OUTPUT: 'NVDEC output verification',
+        UPSCALING: `Upscale-Forge · ${targetHeight}p`,
+        INITIALIZING_UPSCALE_MODEL: `Preparing AI inference engine · ${targetHeight}p`,
+        PREPARING_UPSCALE_SEGMENTS: `Preparing upscale segments · ${targetHeight}p`,
+        FINALIZING_UPSCALE: `Assembling and verifying · ${targetHeight}p`,
+        CANCELLING_UPSCALE: 'Stopping manual upscale',
+        WAITING_UPSCALE_FORGE: `Waiting for Upscale-Forge · ${targetHeight}p`,
+        WAITING_UPSCALE_GPU: `Waiting for GPU · ${targetHeight}p`,
+        VERIFYING_UPSCALE: `Verifying ${targetHeight}p upscale`
+      };
+      const currentPhase = worker.current_phase === 'WAITING_UPSCALE_GPU' && worker.current_wait_reason
+        ? `${worker.current_wait_reason} · ${targetHeight}p`
+        : phaseLabels[worker.current_phase] || 'Media processing';
+      const phaseDetail = worker.current_phase === 'WAITING_UPSCALE_GPU' ? '' : (worker.current_detail || '');
+      $('fileProgressLabel').textContent = ['PAUSED_YIELD', 'PAUSED_THERMAL'].includes(worker.state)
+        ? `${currentPhase} · yielding to ${worker.state === 'PAUSED_THERMAL' ? 'thermal protection' : 'external GPU work'}${phaseDetail ? ` · ${phaseDetail}` : ''}`
+        : `${currentPhase}${phaseDetail ? ` · ${phaseDetail}` : ''}`;
+      $('fileProgressLabel').title = phaseDetail ? `${currentPhase} · ${phaseDetail}` : currentPhase;
+      updateUpscalePreview(worker);
       $('checkedValue').textContent = Number(data.files_checked || 0).toLocaleString();
       $('totalValue').textContent = `${Number(data.total_files || 0).toLocaleString()} in library`;
       $('savedValue').textContent = `${Number(data.saved_gb || 0).toFixed(3)} GB`;
       $('backupValue').textContent = `${Number(data.held_backup_gb || 0).toFixed(3)} GB`;
       $('fpsValue').textContent = Number(worker.current_fps || 0).toFixed(1);
       $('queuedValue').textContent = Number(worker.queued || 0).toLocaleString();
-      $('currentFile').textContent = worker.current_path ? worker.current_path : (!worker.queue_enabled ? 'Queue paused · select a file for an NVDEC test or start the full queue' : gpu.available ? 'Waiting for work' : 'GPU/NVML device is required for media processing');
+      $('currentFile').textContent = worker.current_path ? worker.current_path : (!worker.queue_enabled && !worker.upscale_queue_enabled && !worker.audio_queue_enabled ? 'Bulk queues paused · select a manual job or start a queue' : gpu.available ? 'Waiting for work' : 'GPU/NVML device is required for media processing');
       $('currentFile').title = worker.current_path || '';
       state.queueEnabled = Boolean(worker.queue_enabled);
-      $('queueButton').textContent = state.queueEnabled ? 'Pause Queue' : 'Start Full Queue';
+      state.upscaleQueueEnabled = Boolean(worker.upscale_queue_enabled);
+      state.audioQueueEnabled = Boolean(worker.audio_queue_enabled);
+      $('upscaleQueueButton').textContent = state.upscaleQueueEnabled ? 'Pause Upscale Queue' : 'Start Upscale Queue';
+      $('upscaleQueueButton').className = state.upscaleQueueEnabled
+        ? 'rounded-lg border border-amber-400/30 bg-amber-400/5 px-3.5 py-2 text-sm font-semibold text-amber-200 transition hover:bg-amber-400/10'
+        : 'rounded-lg border border-cyan-400/30 bg-cyan-400/5 px-3.5 py-2 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-400/10';
+      $('queueButton').textContent = state.queueEnabled ? 'Pause Video Queue' : 'Start Video Queue';
       $('queueButton').className = state.queueEnabled
         ? 'rounded-lg border border-amber-400/30 bg-amber-400/5 px-3.5 py-2 text-sm font-semibold text-amber-200 transition hover:bg-amber-400/10'
         : 'rounded-lg border border-emerald-400/30 bg-emerald-400/5 px-3.5 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-400/10';
+      $('audioQueueButton').textContent = state.audioQueueEnabled ? 'Pause Audio Queue' : 'Start Audio Queue';
+      $('audioQueueButton').className = state.audioQueueEnabled
+        ? 'rounded-lg border border-amber-400/30 bg-amber-400/5 px-3.5 py-2 text-sm font-semibold text-amber-200 transition hover:bg-amber-400/10'
+        : 'rounded-lg border border-cyan-400/30 bg-cyan-400/5 px-3.5 py-2 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-400/10';
+      renderUpNext(worker.up_next || []);
       $('updatedAt').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    }
+    function renderUpNext(items) {
+      $('upNextCount').textContent = `${items.length} shown`;
+      if (!items.length) {
+        $('upNextList').innerHTML = '<li class="text-slate-600">No queued work. Select a low-resolution file to add a priority upscale.</li>';
+        return;
+      }
+      $('upNextList').innerHTML = items.map((item, index) => {
+        const title = escapeHtml(item.file_name || item.file_path);
+        const path = escapeHtml(item.file_path || '');
+        const kind = escapeHtml(item.kind || 'Queued work');
+        const isUpscale = String(item.kind || '').startsWith('Upscale');
+        const badge = isUpscale ? 'text-cyan-200' : String(item.kind || '').startsWith('Audio') ? 'text-cyan-300' : 'text-slate-500';
+        const target = Number(item.target_height || 0);
+        const label = target && isUpscale ? `${kind.replace('Upscale · manual priority', `Upscale · ${target}p · priority`)}` : kind;
+        return `<li class="flex min-w-0 items-center gap-2"><span class="w-5 shrink-0 text-[10px] tabular-nums text-slate-600">${String(index + 1).padStart(2, '0')}</span><span class="min-w-0 flex-1 truncate" title="${path}">${title}</span><span class="shrink-0 text-[10px] ${badge}">${escapeHtml(label)}</span></li>`;
+      }).join('');
     }
     function statusPresentation(status) {
       const map = {
@@ -255,7 +439,18 @@
         CHECKING: ['Checking', 'border-sky-400/25 bg-sky-400/5 text-sky-200'],
         TRANSCODING: ['Transcoding', 'border-violet-400/25 bg-violet-400/5 text-violet-200'],
         VERIFYING_OUTPUT: ['Verifying Output', 'border-cyan-400/25 bg-cyan-400/5 text-cyan-200'],
+        AUDIO_REMUXING: ['Audio Remuxing', 'border-cyan-400/25 bg-cyan-400/5 text-cyan-200'],
+        AUDIO_VERIFYING: ['Verifying Audio', 'border-cyan-400/25 bg-cyan-400/5 text-cyan-200'],
+        AUDIO_TRANSCODING: ['Installing Audio', 'border-cyan-400/25 bg-cyan-400/5 text-cyan-200'],
+        AUDIO_RESTORING: ['Restoring Audio Backup', 'border-amber-400/25 bg-amber-400/5 text-amber-200'],
         PAUSED_YIELD: ['Yield Paused', 'border-amber-400/25 bg-amber-400/5 text-amber-200'],
+        UPSCALE_QUEUED: ['Upscale · Queued', 'border-cyan-400/25 bg-cyan-400/5 text-cyan-200'],
+        UPSCALING: ['Upscaling', 'border-cyan-400/25 bg-cyan-400/5 text-cyan-200'],
+        UPSCALE_CANCEL_REQUESTED: ['Cancelling Upscale', 'border-amber-400/25 bg-amber-400/5 text-amber-200'],
+        UPSCALE_CANCELLED: ['Upscale Cancelled', 'border-slate-600 bg-slate-800/60 text-slate-300'],
+        UPSCALED: ['Upscaled ✓', 'border-emerald-400/25 bg-emerald-400/5 text-emerald-200'],
+        UPSCALED_BACKUP_KEPT: ['Upscaled · Backup Held', 'border-amber-400/25 bg-amber-400/5 text-amber-200'],
+        UPSCALE_FAILED: ['Upscale Failed', 'border-rose-400/25 bg-rose-400/5 text-rose-200'],
         HEALTHY: ['Healthy', 'border-emerald-400/25 bg-emerald-400/5 text-emerald-200'],
         TRANSCODED: ['Transcoded ✓', 'border-emerald-400/25 bg-emerald-400/5 text-emerald-200'],
         TRANSCODED_BACKUP_KEPT: ['Verified · Backup Held', 'border-amber-400/25 bg-amber-400/5 text-amber-200'],
@@ -265,6 +460,28 @@
         TRANSCODE_FAILED_RESTORED: ['Failed · Original Restored', 'border-rose-400/25 bg-rose-400/5 text-rose-200']
       };
       return map[status] || [status || 'Unknown', 'border-slate-700 bg-slate-800/60 text-slate-300'];
+    }
+    function audioStatusPresentation(status) {
+      const map = {
+        PENDING: ['Pending', 'border-slate-700 bg-slate-800/60 text-slate-400'],
+        PROCESSING: ['Processing', 'border-cyan-400/25 bg-cyan-400/5 text-cyan-200'],
+        RESTORING: ['Restoring', 'border-amber-400/25 bg-amber-400/5 text-amber-200'],
+        NO_AUDIO: ['No audio', 'border-slate-700 bg-slate-800/60 text-slate-500'],
+        COMPATIBLE: ['Compatible', 'border-emerald-400/25 bg-emerald-400/5 text-emerald-200'],
+        FALLBACK_ADDED: ['AAC · Default', 'border-cyan-400/25 bg-cyan-400/5 text-cyan-200'],
+        FALLBACK_BACKUP_KEPT: ['AAC · Backup held', 'border-amber-400/25 bg-amber-400/5 text-amber-200'],
+        BLOCKED_BACKUP: ['Backup held', 'border-amber-400/25 bg-amber-400/5 text-amber-200'],
+        FAILED: ['Audio failed', 'border-rose-400/25 bg-rose-400/5 text-rose-200']
+      };
+      return map[status] || [status || 'Not checked', 'border-slate-700 bg-slate-800/60 text-slate-400'];
+    }
+    function actionPresentation(action) {
+      const map = {
+        TRANSCODE: ['Transcode', 'border-violet-400/25 bg-violet-400/5 text-violet-200'],
+        UPSCALE: ['Upscale candidate', 'border-cyan-400/25 bg-cyan-400/5 text-cyan-200'],
+        LEAVE_ALONE: ['Leave alone', 'border-slate-700 bg-slate-800/60 text-slate-400']
+      };
+      return map[action] || ['Unclassified', 'border-slate-700 bg-slate-800/60 text-slate-400'];
     }
     function renderRows(files) {
       const body = $('resultsBody');
@@ -278,39 +495,54 @@
       state.lastFilesSignature = signature;
       $('resultCount').textContent = `${files.length} file${files.length === 1 ? '' : 's'}`;
       if (!files.length) {
-        body.innerHTML = '<tr><td colspan="9" class="px-4 py-14 text-center"><div class="text-sm font-medium text-slate-300">No files in this view</div><div class="mt-1 text-xs text-slate-500">Scan a library or choose another result filter.</div></td></tr>';
+          body.innerHTML = '<tr><td colspan="12" class="px-4 py-14 text-center"><div class="text-sm font-medium text-slate-300">No files in this view</div><div class="mt-1 text-xs text-slate-500">Scan a library or choose another result filter.</div></td></tr>';
         state.selectedId = null;
         state.selectedHasBackup = false;
+        state.selectedAction = 'LEAVE_ALONE';
+        state.selectedStatus = null;
+        state.selectedAudioStatus = null;
         updateSelectionButtons();
         return;
       }
       body.innerHTML = files.map((file) => {
         const [statusLabel, statusClass] = statusPresentation(file.status);
+        const [audioLabel, audioClass] = audioStatusPresentation(file.audio_status);
         const name = escapeHtml(file.file_name || file.file_path);
         const path = escapeHtml(file.file_path);
         const codec = escapeHtml(file.codec || '—');
+        const container = escapeHtml(file.container_type || '—');
+        const [planLabel, planClass] = actionPresentation(file.action_tag);
+        const planReason = escapeHtml(file.action_reason || '');
         const resolution = file.width && file.height ? `${Number(file.width)}×${Number(file.height)}` : '—';
         const actualSize = file.actual_size_bytes ?? file.size_bytes;
         const sizeText = file.new_size_bytes ? `${formatBytes(actualSize)} <span class="text-slate-600">/ ${formatBytes(file.size_bytes)} in</span>` : formatBytes(actualSize);
-        const updated = file.updated_at ? new Date(file.updated_at.replace(' ', 'T') + 'Z').toLocaleString() : '—';
-        const canRestore = file.has_backup && file.status === 'TRANSCODED_BACKUP_KEPT';
+        const updatedValue = file.upscaled_at || file.transcoded_at || file.updated_at;
+        const updated = updatedValue ? new Date(updatedValue.replace(' ', 'T') + 'Z').toLocaleString() : '—';
+        const canRestore = file.has_backup && (['TRANSCODED_BACKUP_KEPT', 'UPSCALED_BACKUP_KEPT', 'UPSCALE_FAILED'].includes(file.status) || file.audio_status === 'FALLBACK_BACKUP_KEPT');
         const canRetry = ['CORRUPT', 'SKIPPED_HW_UNSUPPORTED', 'TRANSCODE_FAILED_RESTORED'].includes(file.status) && !file.has_backup;
-        const error = file.error_log ? `<details data-error-id="${Number(file.id)}" class="mt-2 max-w-xl" ${state.expandedErrorIds.has(Number(file.id)) ? 'open' : ''}><summary class="cursor-pointer text-[11px] text-rose-300/80 hover:text-rose-200">Show exact FFmpeg / processing details</summary><pre class="scrollbar mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-rose-400/10 bg-slate-950/70 p-3 font-mono text-[10px] leading-relaxed text-rose-100/80">${escapeHtml(file.error_log)}</pre></details>` : '';
+        const errorText = [file.error_log, file.audio_error ? `Audio compatibility: ${file.audio_error}` : null].filter(Boolean).join('\n');
+        const error = errorText ? `<details data-error-id="${Number(file.id)}" class="mt-2 max-w-xl" ${state.expandedErrorIds.has(Number(file.id)) ? 'open' : ''}><summary class="cursor-pointer text-[11px] text-rose-300/80 hover:text-rose-200">Show processing details</summary><pre class="scrollbar mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-rose-400/10 bg-slate-950/70 p-3 font-mono text-[10px] leading-relaxed text-rose-100/80">${escapeHtml(errorText)}</pre></details>` : '';
         return `<tr class="group align-top hover:bg-white/[.018]">
-          <td class="px-4 py-3"><input type="radio" name="fileSelection" value="${Number(file.id)}" data-has-backup="${canRestore}" aria-label="Select ${name}" class="accent-emerald-400" ${state.selectedId === Number(file.id) ? 'checked' : ''}></td>
+          <td class="px-4 py-3"><input type="radio" name="fileSelection" value="${Number(file.id)}" data-has-backup="${canRestore}" data-action="${escapeHtml(file.action_tag || 'LEAVE_ALONE')}" data-status="${escapeHtml(file.status || '')}" data-audio-status="${escapeHtml(file.audio_status || '')}" aria-label="Select ${name}" class="accent-emerald-400" ${state.selectedId === Number(file.id) ? 'checked' : ''}></td>
           <td class="max-w-[370px] px-3 py-3"><div class="truncate text-xs font-medium text-slate-200" title="${path}">${name}</div><div class="mt-1 truncate text-[10px] text-slate-600" title="${path}">${path}</div>${error}</td>
           <td class="px-3 py-3"><span class="inline-flex whitespace-nowrap rounded-md border px-2 py-1 text-[10px] font-medium ${statusClass}">${statusLabel}</span></td>
           <td class="px-3 py-3 text-xs text-slate-400">${codec}</td>
+          <td class="px-3 py-3"><span title="${escapeHtml(file.audio_error || '')}" class="inline-flex whitespace-nowrap rounded-md border px-2 py-1 text-[10px] font-medium ${audioClass}">${audioLabel}</span></td>
+          <td class="px-3 py-3 text-xs uppercase text-slate-400">${container}</td>
           <td class="px-3 py-3 text-xs tabular-nums text-slate-400">${resolution}</td>
+          <td class="px-3 py-3"><span title="${planReason}" class="inline-flex whitespace-nowrap rounded-md border px-2 py-1 text-[10px] font-medium ${planClass}">${planLabel}</span></td>
           <td class="whitespace-nowrap px-3 py-3 text-xs tabular-nums text-slate-300">${sizeText}</td>
           <td class="whitespace-nowrap px-3 py-3 text-xs tabular-nums text-slate-400">${formatDuration(file.duration)}</td>
           <td class="whitespace-nowrap px-3 py-3 text-[10px] text-slate-500">${escapeHtml(updated)}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-right">${canRetry ? `<button data-retry="${Number(file.id)}" class="rounded-md border border-slate-700 px-2.5 py-1.5 text-[10px] font-medium text-slate-300 hover:border-emerald-400/40 hover:text-emerald-200">Retry</button>` : canRestore ? '<span class="text-[10px] text-amber-200/70">Backup held</span>' : '—'}</td>
+          <td class="whitespace-nowrap px-4 py-3 text-right">${canRetry ? `<button data-retry="${Number(file.id)}" class="rounded-md border border-slate-700 px-2.5 py-1.5 text-[10px] font-medium text-slate-300 hover:border-emerald-400/40 hover:text-emerald-200">Retry</button>` : canRestore ? '<span class="text-[10px] text-amber-200/70">Backup held</span>' : file.action_tag === 'UPSCALE' ? '<span class="text-[10px] text-cyan-200/70">Select to upscale</span>' : '—'}</td>
         </tr>`;
       }).join('');
       body.querySelectorAll('input[name="fileSelection"]').forEach((input) => input.addEventListener('change', () => {
         state.selectedId = Number(input.value);
         state.selectedHasBackup = input.dataset.hasBackup === 'true';
+        state.selectedAction = input.dataset.action || 'LEAVE_ALONE';
+        state.selectedStatus = input.dataset.status || null;
+        state.selectedAudioStatus = input.dataset.audioStatus || null;
         updateSelectionButtons();
       }));
       body.querySelectorAll('details[data-error-id]').forEach((details) => details.addEventListener('toggle', () => {
@@ -322,7 +554,7 @@
         button.disabled = true;
         try {
           const result = await api(`/api/files/${button.dataset.retry}/retry`, { method: 'POST' });
-          toast(result.queue_enabled ? 'File added back to the processing queue.' : 'File marked Pending; the full queue is paused.');
+          toast(result.queue_enabled ? 'File added back to the video queue.' : 'File marked Pending; the video queue is paused.');
           await refreshAll();
         }
         catch (error) { toast(error.message, 'error'); button.disabled = false; }
@@ -331,8 +563,16 @@
       if (!selected) {
         state.selectedId = null;
         state.selectedHasBackup = false;
+        state.selectedAction = 'LEAVE_ALONE';
+        state.selectedStatus = null;
+        state.selectedAudioStatus = null;
       } else {
-        state.selectedHasBackup = Boolean(selected.has_backup && selected.status === 'TRANSCODED_BACKUP_KEPT');
+        state.selectedHasBackup = Boolean(
+          selected.has_backup && (['TRANSCODED_BACKUP_KEPT', 'UPSCALED_BACKUP_KEPT', 'UPSCALE_FAILED'].includes(selected.status) || selected.audio_status === 'FALLBACK_BACKUP_KEPT')
+        );
+        state.selectedAction = selected.action_tag || 'LEAVE_ALONE';
+        state.selectedStatus = selected.status || null;
+        state.selectedAudioStatus = selected.audio_status || null;
       }
       updateSelectionButtons();
     }
@@ -340,6 +580,11 @@
       $('testButton').disabled = !state.selectedId || state.selectedHasBackup;
       $('fullTestButton').disabled = !state.selectedId || state.selectedHasBackup;
       $('restoreButton').disabled = !state.selectedId || !state.selectedHasBackup;
+      $('upscaleButton').disabled = !state.selectedId || state.selectedHasBackup
+        || state.selectedAction !== 'UPSCALE'
+        || ['UPSCALE_QUEUED', 'UPSCALING', 'UPSCALE_CANCEL_REQUESTED', 'UPSCALED', 'UPSCALED_BACKUP_KEPT'].includes(state.selectedStatus);
+      $('cancelUpscaleButton').disabled = !state.selectedId
+        || !['UPSCALE_QUEUED', 'UPSCALING', 'UPSCALE_CANCEL_REQUESTED'].includes(state.selectedStatus);
     }
     async function loadSettings() {
       const settings = await api('/api/settings');
@@ -351,6 +596,7 @@
       $('externalPolicy').value = settings.external_process_policy;
       $('externalGpuThreshold').value = String(settings.external_gpu_utilization_threshold);
       $('thermalPause').value = String(settings.thermal_pause_c);
+      $('thermalTripDwell').value = String(settings.thermal_trip_dwell_sec);
       $('thermalCooldown').value = String(settings.thermal_cooldown_sec);
     }
     async function saveSettings() {
@@ -364,6 +610,7 @@
         external_process_policy: $('externalPolicy').value,
         external_gpu_utilization_threshold: Number($('externalGpuThreshold').value),
         thermal_pause_c: Number($('thermalPause').value),
+        thermal_trip_dwell_sec: Number($('thermalTripDwell').value),
         thermal_cooldown_sec: Number($('thermalCooldown').value)
       };
       $('settingsMessage').textContent = 'Saving…';
@@ -397,6 +644,9 @@
       state.filter = button.dataset.filter;
       state.selectedId = null;
       state.selectedHasBackup = false;
+      state.selectedAction = 'LEAVE_ALONE';
+      state.selectedStatus = null;
+      state.selectedAudioStatus = null;
       document.querySelectorAll('.filter-tab').forEach((tab) => {
         tab.classList.toggle('tab-active', tab === button);
         tab.classList.toggle('text-slate-500', tab !== button);
@@ -413,7 +663,8 @@
       button.disabled = true;
       try {
         const result = await api('/api/scan', { method: 'POST' });
-        toast(`Scanned ${result.scanned} media files; ${result.enqueued} queued${result.queue_enabled ? '.' : '. Queue paused—select a file to test it.'}`);
+        const actions = result.action_counts || {};
+        toast(`Scanned ${result.scanned} files (${actions.TRANSCODE || 0} transcode, ${actions.UPSCALE || 0} upscale, ${actions.LEAVE_ALONE || 0} leave alone); ${result.upscale_enqueued || 0} upscale, ${result.enqueued} video, ${result.audio_enqueued || 0} audio item(s) queued.`);
         await refreshAll();
       } catch (error) { toast(`Scan failed: ${error.message}`, 'error'); }
       finally { button.disabled = false; }
@@ -424,13 +675,44 @@
       try {
         if (state.queueEnabled) {
           await api('/api/queue/pause', { method: 'POST' });
-          toast('Queue paused after the current file.');
+          toast('Video queue paused after the current file.');
         } else {
           const result = await api('/api/queue/start', { method: 'POST' });
-          toast(`Full queue started; ${result.enqueued} pending file(s) queued.`);
+          toast(`Video queue started; ${result.enqueued} pending file(s) queued.`);
         }
         await refreshAll();
       } catch (error) { toast(`Queue control failed: ${error.message}`, 'error'); }
+      finally { button.disabled = false; }
+    });
+    $('upscaleQueueButton').addEventListener('click', async () => {
+      const button = $('upscaleQueueButton');
+      button.disabled = true;
+      try {
+        if (state.upscaleQueueEnabled) {
+          await api('/api/upscale-queue/pause', { method: 'POST' });
+          toast('Bulk upscale queue paused after the current upscale.');
+        } else {
+          const targetHeight = Number($('upscaleTarget').value);
+          const result = await api(`/api/upscale-queue/start?target_height=${targetHeight}`, { method: 'POST' });
+          toast(`Bulk upscale queue started at ${result.target_height}p; ${result.queued} candidate(s) queued.`);
+        }
+        await refreshAll();
+      } catch (error) { toast(`Upscale queue control failed: ${error.message}`, 'error'); }
+      finally { button.disabled = false; }
+    });
+    $('audioQueueButton').addEventListener('click', async () => {
+      const button = $('audioQueueButton');
+      button.disabled = true;
+      try {
+        if (state.audioQueueEnabled) {
+          await api('/api/audio-queue/pause', { method: 'POST' });
+          toast('Audio compatibility queue paused after the current file.');
+        } else {
+          const result = await api('/api/audio-queue/start', { method: 'POST' });
+          toast(`Audio compatibility queue started; ${result.enqueued} pending file(s) queued.`);
+        }
+        await refreshAll();
+      } catch (error) { toast(`Audio queue control failed: ${error.message}`, 'error'); }
       finally { button.disabled = false; }
     });
     $('testButton').addEventListener('click', async () => {
@@ -459,6 +741,37 @@
       } catch (error) { toast(`Full test could not be queued: ${error.message}`, 'error'); }
       finally { updateSelectionButtons(); }
     });
+    $('upscaleButton').addEventListener('click', async () => {
+      if (!state.selectedId) return;
+      const button = $('upscaleButton');
+      button.disabled = true;
+      try {
+        const targetHeight = Number($('upscaleTarget').value);
+        const result = await api(`/api/files/${state.selectedId}/upscale?target_height=${targetHeight}`, { method: 'POST' });
+        state.selectedId = null;
+        state.selectedHasBackup = false;
+        state.selectedAction = 'LEAVE_ALONE';
+        state.selectedStatus = null;
+        toast(`Manual ${result.target_height}p upscale queued at priority position ${result.position}; bulk upscale, video, and audio work will wait until it completes.`);
+        await refreshAll();
+      } catch (error) {
+        toast(`Upscale could not be queued: ${error.message}`, 'error');
+      } finally { updateSelectionButtons(); }
+    });
+    $('cancelUpscaleButton').addEventListener('click', async () => {
+      if (!state.selectedId || !confirm('Cancel the selected upscale? The original file will remain unchanged.')) return;
+      const button = $('cancelUpscaleButton');
+      button.disabled = true;
+      try {
+        const result = await api(`/api/files/${state.selectedId}/upscale/cancel`, { method: 'POST' });
+        toast(result.status === 'UPSCALE_CANCELLED'
+          ? 'Upscale cancelled; the original remains unchanged.'
+          : 'Cancellation requested; Upscale-Forge is stopping this job safely.');
+        await refreshAll();
+      } catch (error) {
+        toast(`Upscale could not be cancelled: ${error.message}`, 'error');
+      } finally { updateSelectionButtons(); }
+    });
     $('purgeButton').addEventListener('click', async () => {
       if (!confirm('Permanently purge all retained, verified .gpuforge_bak files?')) return;
       try {
@@ -477,7 +790,15 @@
         await refreshAll();
       } catch (error) { toast(`Restore failed: ${error.message}`, 'error'); }
     });
-    ['operationMode', 'backupPolicy', 'qualityProfile', 'nvencPreset', 'externalPolicy', 'externalGpuThreshold', 'thermalPause', 'thermalCooldown'].forEach((id) => $(id).addEventListener('change', saveSettings));
+    ['operationMode', 'backupPolicy', 'qualityProfile', 'nvencPreset', 'externalPolicy', 'externalGpuThreshold', 'thermalPause', 'thermalTripDwell', 'thermalCooldown'].forEach((id) => $(id).addEventListener('change', saveSettings));
+
+    window.addEventListener('pagehide', () => {
+      if (state.previewFileId != null) {
+        navigator.sendBeacon(`/api/files/${state.previewFileId}/upscale/preview/cleanup`, '');
+      }
+      state.previewObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+      state.previewObjectUrls = [];
+    });
 
     (async () => {
       try { await loadSettings(); }

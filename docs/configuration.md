@@ -35,10 +35,13 @@ All fields are validated by the Pydantic `Settings` model. Unknown keys are reje
 | `gpu_index` | Integer ≥ 0 | `0` | Zero-based index among GPUs visible inside the container. A change restarts NVML monitoring. |
 | `external_process_policy` | `known`, `any` | `known` | `known` recognizes external FFmpeg/Jellyfin processes; `any` accepts any external PID reported by NVML. |
 | `external_gpu_utilization_threshold` | Integer 0–100 | `8` | Yield when an external process is present and the busiest compute/decode/encode engine is strictly above this percentage. |
-| `thermal_pause_c` | Integer 70–90 | `89` | User thermal pause limit in °C. When available, the effective pause limit is the lower of this value and 5 °C below NVML's slowdown threshold, with a 60 °C floor. |
+| `thermal_pause_c` | Integer 70–95 | `89` | User thermal pause limit in °C. When available, the effective limit is the lower of this value and 1 °C below NVML's slowdown threshold, with a 60 °C floor. |
+| `thermal_trip_dwell_sec` | Integer 0–60 | `5` | Continuous time at or above the effective pause temperature before pausing. NVML's shutdown threshold remains an immediate stop. |
 | `thermal_cooldown_sec` | Integer 0–300 | `30` | Required continuous dwell at or below 7 °C under the effective pause point before resuming. |
 
 The web UI updates the visible settings immediately. `media_roots` and `gpu_index` are available through `PUT /api/settings`; the full settings object returned by `GET /api/settings` should be used as the update body. See the [API reference](api-reference.md).
+
+Audio compatibility is an independent, user-started queue rather than an operation-mode setting. It can be run while the video queue is paused and does not change the H.265 routing policy.
 
 ## Smart route and bitrate floors
 
@@ -56,7 +59,7 @@ HEVC and AV1 inputs receive a health check instead of another lossy encode. Sour
 
 | Variable | Example default | Purpose |
 | --- | --- | --- |
-| `GPU_FORGE_IMAGE` | `gpu-forge:local` | Compose image name/tag. Set to `weasts/media-forge:2.0.0` once an approved image release is available. |
+| `GPU_FORGE_IMAGE` | `weasts/media-forge:2.1.0` | GPU-Forge Compose image tag. |
 | `GPU_FORGE_BIND_IP` | `127.0.0.1` | Host interface to which port 8090 is bound. |
 | `GPU_FORGE_PORT` | `8090` | Host-side HTTP port. Container port remains 8090. |
 | `GPU_FORGE_CONFIG_PATH` | `./config` | Persistent host directory mounted at `/config`. |

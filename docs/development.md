@@ -16,9 +16,9 @@ Run the CPU-only acceptance suite from the repository root:
 python -m unittest discover -s tests -v
 ```
 
-The suite creates temporary media, config, and SQLite files and stubs FFmpeg execution. It does not require a physical GPU, NVML, FFmpeg binaries, or a real media library. It exercises command/routing safeguards, output-verification rollback, backup restore/recovery, selected-file behavior, watchdog thresholds/cooldowns, and legacy-container replacement.
+The suite creates temporary media, config, and SQLite files and stubs FFmpeg execution. It does not require a physical GPU, NVML, FFmpeg binaries, or a real media library. It exercises command/routing safeguards, scan-time metadata/action tags, persistent video/audio/upscale work tracking, audio stream selection and default disposition, separate bulk queue start/pause and priority, output-verification rollback, backup restore/recovery, yield-state recovery, selected-file behavior, watchdog thresholds/cooldowns, and legacy-container replacement.
 
-Passing these tests does not establish compatibility with a particular NVIDIA driver/GPU, real-world decode support, performance, or perceptual quality. Validate deployment changes with an NVDEC-only selected-file test and then a Full Pipeline Test on a disposable/backed-up file before enabling the bulk queue.
+Passing these tests does not establish compatibility with a particular NVIDIA driver/GPU, real-world decode support, performance, or perceptual quality. Validate video changes with an NVDEC-only selected-file test and a Full Pipeline Test. Validate audio changes with a real FFmpeg remux of a disposable file, then inspect the streams/default disposition with FFprobe and play the file in Jellyfin after a manual library refresh.
 
 ## Run the API locally
 
@@ -37,7 +37,7 @@ Use temporary paths for `GPU_FORGE_CONFIG_DIR` and `GPU_FORGE_DB_PATH` when deve
 ## Source layout
 
 ```text
-app/                  FastAPI application and media/GPU workers
+app/                  FastAPI application, scanner, FFprobe helpers, and media/GPU workers
 app/static/index.html Browser dashboard
 config/               Local runtime state (ignored); examples live in docs/examples/
 docs/                 User, API, architecture, operations, and development docs
@@ -51,7 +51,11 @@ requirements.txt      Python runtime dependency ranges
 
 - All media video decodes must use CUDA output surfaces and `-xerror`; do not add silent software fallback.
 - Never replace a source until output metadata and full NVDEC verification pass.
+- Audio compatibility jobs copy video, preserve every original audio track, and add at most one verified default AAC-LC stereo fallback for the primary audio stream.
+- Keep the user-triggered bulk-upscale, video/health, and audio queues independent; dispatch individual and bulk upscales first, video jobs before audio jobs, and serialize all FFmpeg work through the single worker.
 - Keep temp, backup, and destination files on the same filesystem/directory for atomic rename behavior.
 - Treat SQLite status and filesystem state as a recoverable transaction pair; update startup recovery when changing swap states.
-- Keep the bulk queue paused on startup. Selected-file tests remain intentionally independent of bulk queue enablement.
+- Persist output fingerprints and a transcode timestamp; an unchanged verified output must not return to the queue after a rescan.
+- Persist `PAUSED_YIELD` only while a live FFmpeg child is stopped, and reconcile orphaned active states without overwriting committed transcodes.
+- Keep all bulk queues paused on startup. Selected-file tests and manual upscales remain intentionally independent of bulk queue enablement.
 - Update acceptance coverage when changing routing, command construction, recovery, or replacement semantics.
